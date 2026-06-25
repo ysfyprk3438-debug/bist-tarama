@@ -814,8 +814,9 @@ with sekmeler[6]:
                     st.markdown(ui.temiz_html(f"""<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="color:#64748B;font-size:0.7rem;width:24px">{madalya}</span><span style="color:#E2E8F0;font-size:0.74rem;width:130px;overflow:hidden">{s['sektor']}</span><div style="flex:1;background:#1E293B;border-radius:4px;height:14px"><div style="width:{bar_g}%;height:14px;border-radius:4px;background:{renk}"></div></div><span style="color:{renk};font-size:0.68rem;font-weight:700;width:48px;text-align:right">%{s['momentum']:+.0f}</span></div>"""), unsafe_allow_html=True)
                 st.caption("Sıralama: momentum + akıllı para + fırsat yoğunluğu birleşik gücü. Lider sektördeki lider hisseler genelde en güvenli.")
                 st.markdown("<div style='margin-bottom:12px'></div>", unsafe_allow_html=True)
-                isi = bt.sektor_isi(st.session_state.sonuclar)
-                if isi:
+
+        isi = bt.sektor_isi(st.session_state.sonuclar)
+        if isi:
             max_guc = isi[0]["guc"]
             for s in isi:
                 renk = bt.isi_renk(s["guc"], max_guc)
