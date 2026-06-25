@@ -1,0 +1,155 @@
+"""
+═══════════════════════════════════════════════════════════════
+BACKTEST + SEKTÖR ISI HARİTASI — BIST Tarama v4
+═══════════════════════════════════════════════════════════════
+- Backtest: "Bu strateji geçmişte çalışsaydı ne kazandırırdı?"
+  Robotlaştırmadan önce stratejinin gerçekten para kazandırdığını
+  kanıtlamanın tek yolu budur.
+- Isı haritası: Hangi sektöre para giriyor, tek bakışta gör.
+"""
+
+import numpy as np
+
+
+# ══════════════════════════════════════════════════════════════
+# BACKTEST — geçmişe dönük strateji testi
+# ══════════════════════════════════════════════════════════════
+def backtest_calistir(df, vade_ayar, analiz_fonk, sektor="Test", baslangic_gun=120):
+    """
+    Geçmiş veride stratejiyi gün gün simüle eder.
+    Her gün: sinyal var mı? Varsa hedef/stop'a göre sonuç ne oldu?
+
+    df: tam OHLCV verisi
+    analiz_fonk: analiz.analiz_et fonksiyonu
+    Dönen: backtest özeti
+    """
+    if df is None or len(df) < baslangic_gun + 20:
+        return None
+
+    islemler = []
+    i = baslangic_gun
+    son_idx = len(df) - 5  # son 5 günü sonuç görmek için bırak
+
+    while i < son_idx:
+        # O güne kadarki veriyle analiz yap (geleceği görme!)
+        gecmis_df = df.iloc[:i].copy()
+        r = analiz_fonk("BT", gecmis_df, vade_ayar, 100000, 1.0, sektor, detayli=False)
+
+        if r is None:
+            i += 1
+            continue
+
+        giris = r["son"]
+        hedef = r["hedef"]
+        stop = r["stop"]
+
+        # Sonraki günlerde hedef mi stop mu önce gelir?
+        sonuc = None
+        cikis_fiyat = giris
+        gun_sayisi = 0
+        for j in range(i, min(i + 30, len(df))):  # max 30 gün takip
+            gun = df.iloc[j]
+            gun_sayisi = j - i + 1
+            if gun["Low"] <= stop:
+                sonuc = "STOP"
+                cikis_fiyat = stop
+                break
+            if gun["High"] >= hedef:
+                sonuc = "HEDEF"
+                cikis_fiyat = hedef
+                break
+        if sonuc is None:
+            sonuc = "AÇIK"
+            cikis_fiyat = float(df.iloc[min(i + 30, len(df) - 1)]["Close"])
+
+        getiri_pct = ((cikis_fiyat - giris) / giris) * 100
+        islemler.append({
+            "giris": giris, "cikis": cikis_fiyat, "sonuc": sonuc,
+            "getiri_pct": getiri_pct, "gun": gun_sayisi,
+        })
+
+        # İşlem kapandıktan sonra devam et (üst üste binmesin)
+        i += max(gun_sayisi, 1)
+
+    if not islemler:
+        return {"islem_sayisi": 0}
+
+    getiriler = [x["getiri_pct"] for x in islemler]
+    kazanan = [x for x in islemler if x["getiri_pct"] > 0]
+    hedef_tutan = [x for x in islemler if x["sonuc"] == "HEDEF"]
+    stop_yiyen = [x for x in islemler if x["sonuc"] == "STOP"]
+
+    # Bileşik getiri (her işleme eşit ağırlık)
+    bilesik = 1.0
+    for g in getiriler:
+        bilesik *= (1 + g / 100)
+    bilesik_pct = (bilesik - 1) * 100
+
+    return {
+        "islem_sayisi": len(islemler),
+        "kazanan": len(kazanan),
+        "kaybeden": len(islemler) - len(kazanan),
+        "basari_pct": len(kazanan) / len(islemler) * 100,
+        "hedef_tutan": len(hedef_tutan),
+        "stop_yiyen": len(stop_yiyen),
+        "ort_getiri": np.mean(getiriler),
+        "toplam_bilesik": bilesik_pct,
+        "en_iyi": max(getiriler),
+        "en_kotu": min(getiriler),
+        "ort_gun": np.mean([x["gun"] for x in islemler]),
+    }
+
+
+# ══════════════════════════════════════════════════════════════
+# SEKTÖR ISI HARİTASI — paranın aktığı yön
+# ══════════════════════════════════════════════════════════════
+def sektor_isi(sonuclar):
+    """
+    Tarama sonuçlarını sektöre göre grupla, sektörel güç hesapla.
+    Dönen: sektör listesi (güce göre sıralı)
+    """
+    sektorler = {}
+    for r in sonuclar:
+        sek = r["sektor"]
+        if sek not in sektorler:
+            sektorler[sek] = {
+                "sektor": sek, "adet": 0, "toplam_puan": 0,
+                "toplam_ap": 0, "buyuk_oyuncu": 0, "kazanc_top": 0,
+            }
+        s = sektorler[sek]
+        s["adet"] += 1
+        s["toplam_puan"] += r["puan"]
+        s["toplam_ap"] += r["sm"]["skor"]
+        s["kazanc_top"] += r["kazanc_pct"]
+        if r["sm"]["buyuk_oyuncu"]:
+            s["buyuk_oyuncu"] += 1
+
+    liste = []
+    for sek, s in sektorler.items():
+        adet = s["adet"]
+        ort_puan = s["toplam_puan"] / adet
+        ort_ap = s["toplam_ap"] / adet
+        # Sektör güç skoru: fırsat adedi + ortalama puan + akıllı para
+        guc = adet * 5 + ort_puan * 0.5 + ort_ap * 0.3 + s["buyuk_oyuncu"] * 8
+        liste.append({
+            "sektor": sek, "adet": adet,
+            "ort_puan": ort_puan, "ort_ap": ort_ap,
+            "buyuk_oyuncu": s["buyuk_oyuncu"],
+            "ort_kazanc": s["kazanc_top"] / adet,
+            "guc": guc,
+        })
+
+    liste.sort(key=lambda x: x["guc"], reverse=True)
+    return liste
+
+
+def isi_renk(guc, max_guc):
+    """Güce göre ısı rengi (yeşil tonları)."""
+    if max_guc <= 0:
+        return "#1E293B"
+    oran = guc / max_guc
+    if oran >= 0.8: return "#10B981"
+    elif oran >= 0.6: return "#34D399"
+    elif oran >= 0.4: return "#F59E0B"
+    elif oran >= 0.2: return "#FB923C"
+    else: return "#64748B"
