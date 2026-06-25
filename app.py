@@ -55,15 +55,14 @@ st.set_page_config(
 # ══════════════════════════════════════════════════════════════
 BIST_SEKTORLER = {
     "🏦 Bankacılık": ['AKBNK','GARAN','HALKB','ISCTR','VAKBN','YKBNK','TSKB','ALBRK','SKBNK','KLNMA'],
-    "⚡ Enerji": ['EUPWR','ODAS','ENJSA','AKSEN','ZOREN','AYEN','AYDEM','KCAER','CWENE','NATEN','AREN','BEMAS','EPIAS'],
-    "🏭 Sanayi": ['EREGL','KRDMD','ISDMR','CEMTS','CIMSA','ADANA','AFYON','MRDIN','ARCLK','VESTL','BFREN','DOAS','OTKAR','FROTO','TOASO','TTRAK'],
+    "⚡ Enerji": ['EUPWR','ODAS','ENJSA','AKSEN','ZOREN','AYEN','AYDEM','KCAER','CWENE','NATEN'],
+    "🏭 Sanayi": ['EREGL','KRDMD','ISDMR','CEMTS','CIMSA','AFYON','ARCLK','VESTL','BFREN','DOAS','OTKAR','FROTO','TOASO','TTRAK'],
     "💊 Sağlık / Kimya": ['ECILC','SELEC','MPARK','DEVA','ECZYT','GUBRF','HEKTS','PETKM','SASA','TRCAS','PRKAB'],
-    "🛒 Perakende / Gıda": ['BIMAS','MGROS','SOKM','ULKER','CCOLA','AEFES','TATGD','KERVT','PNSUT','SELGD','BANVT','DARDL'],
+    "🛒 Perakende / Gıda": ['BIMAS','MGROS','SOKM','ULKER','CCOLA','AEFES','TATGD','PNSUT','BANVT','DARDL'],
     "📡 Teknoloji / Telekom": ['TTKOM','TCELL','ASELS','NETAS','LOGO','INDES','ARENA','DGATE','KAREL','SMART','PAPIL'],
     "✈️ Ulaşım / Turizm": ['THYAO','PGSUS','TAVHL','CLEBI','MAALT','RYSAS'],
     "🏗️ İnşaat / GYO": ['EKGYO','ISGYO','TRGYO','KLGYO','VKGYO','SNGYO','HLGYO','ENKAI','TKFEN','GSDHO'],
-    "⛏️ Madencilik": ['KOZAL','KOZAA','IPEKE','GLYHO'],
-    "💼 Holding": ['SAHOL','KCHOL','DOHOL','ALARK','BERA','GOLTS','ADEL','GESAN','MAVI','BRISA','KARSN'],
+    "💼 Holding": ['SAHOL','KCHOL','DOHOL','ALARK','BERA','GOLTS','ADEL','GESAN','MAVI','BRISA','KARSN','GLYHO'],
 }
 
 BIST_TUM, KOD_SEKTOR = [], {}
