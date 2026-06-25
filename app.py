@@ -36,6 +36,7 @@ import piyasa as pi
 import ruzgar as rz
 import performans as pf
 import radar as rd
+import grafik as gf
 import genislik as gen
 import seffaflik as sf
 import strateji as strj
