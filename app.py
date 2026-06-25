@@ -441,7 +441,7 @@ with sekmeler[2]:
 
     c1, c2 = st.columns(2)
     with c1:
-        min_puan = st.slider("Min Puan", 0, 90, 40, 5)
+        min_puan = st.slider("Min Puan", 0, 90, 20, 5)
     with c2:
         sektor_sec = st.selectbox("Sektör", ["Tümü"] + list(BIST_SEKTORLER.keys()))
     sm_filtre = st.checkbox("Sadece Akıllı Para ≥ 60")
@@ -985,6 +985,16 @@ with sekmeler[7]:
 with sekmeler[8]:
     st.markdown("#### 🧭 Yol Haritası & Vizyon")
 
+    # Güvenli erişim — durum.py / yol_haritasi.py eski/uyumsuz olsa bile sekme (ve tüm uygulama) çökmez
+    _surum = getattr(dr, "SURUM", "v4")
+    _su_an = getattr(dr, "SU_AN", {}) or {}
+    _asama = _su_an.get("asama", "Geliştirme aşamasında")
+    _siradaki = _su_an.get("siradaki_adim", "—")
+    _deploy_adimlari = getattr(dr, "DEPLOY_ADIMLARI", []) or []
+    _tamamlanan = getattr(yh, "TAMAMLANAN", []) or []
+    _katmanlar = getattr(yh, "KATMANLAR", []) or []
+    _ek_fikirler = getattr(yh, "EK_FIKIRLER", []) or []
+
     # Kalibrasyon olgunluğu — sistem ne kadar öğrendi? (Katman 1)
     kd = klb.kalibrasyon_durumu(st.session_state.get("gecmis", []))
     olg_renk = "#10B981" if kd["hazir"] else ("#F59E0B" if kd["olgunluk_yuzde"] > 0 else "#64748B")
@@ -1015,26 +1025,26 @@ with sekmeler[8]:
 *Tam rehber için REHBER.md dosyasına bak.*""")
 
     # ŞU AN BURADAYIZ — kontrol noktası şeridi
-    st.markdown(ui.temiz_html(f"""<div style="background:linear-gradient(135deg,#00D4FF22,#0A2540);border:1px solid #00D4FF;border-radius:10px;padding:14px 16px;margin-bottom:14px"><div style="color:#00D4FF;font-size:0.7rem;font-weight:700;letter-spacing:1px;margin-bottom:4px">📍 ŞU AN BURADAYIZ — {dr.SURUM}</div><div style="color:#E2E8F0;font-size:0.85rem;font-weight:600;margin-bottom:6px">{dr.SU_AN['asama']}</div><div style="color:#94A3B8;font-size:0.76rem"><b style="color:#38BDF8">Sıradaki adım:</b> {dr.SU_AN['siradaki_adim']}</div></div>"""), unsafe_allow_html=True)
+    st.markdown(ui.temiz_html(f"""<div style="background:linear-gradient(135deg,#00D4FF22,#0A2540);border:1px solid #00D4FF;border-radius:10px;padding:14px 16px;margin-bottom:14px"><div style="color:#00D4FF;font-size:0.7rem;font-weight:700;letter-spacing:1px;margin-bottom:4px">📍 ŞU AN BURADAYIZ — {_surum}</div><div style="color:#E2E8F0;font-size:0.85rem;font-weight:600;margin-bottom:6px">{_asama}</div><div style="color:#94A3B8;font-size:0.76rem"><b style="color:#38BDF8">Sıradaki adım:</b> {_siradaki}</div></div>"""), unsafe_allow_html=True)
     with st.expander("📋 Deploy Adımları (eve gidince)"):
-        for a in dr.DEPLOY_ADIMLARI:
+        for a in _deploy_adimlari:
             st.markdown(a)
     st.markdown(ui.temiz_html("""<div style="background:#0A1628;border-left:3px solid #00D4FF;border-radius:8px;padding:12px 14px;margin-bottom:14px"><div style="color:#94A3B8;font-size:0.78rem;line-height:1.5"><b style="color:#E2E8F0">Felsefe:</b> Piyasa uyarlanır bir sistemdir. Bir kenar bulunup kullanıldıkça aşınır — kalıcı zirve yoktur, zirve ona çıktıkça yer değiştirir. Asıl kazanan zirveyi bulan değil, zirve kayınca en hızlı yeniden konumlanan sistemdir. Hedefimiz bitmiş program değil, kendini sürekli yeniden icat eden bir organizma.</div></div>"""), unsafe_allow_html=True)
 
-    st.markdown(f"##### ✅ Tamamlananlar ({len(yh.TAMAMLANAN)})")
+    st.markdown(f"##### ✅ Tamamlananlar ({len(_tamamlanan)})")
     with st.expander("Bugüne kadar yapılanlar"):
-        for ad, durum in yh.TAMAMLANAN:
+        for ad, durum in _tamamlanan:
             st.markdown(f"{durum} {ad}")
 
     st.markdown("##### 🧭 Katmanlar — Zirve Kaydıkça Kovalamak")
     durum_renk = {"🎯":"#00D4FF", "🔨":"#F59E0B", "🔭":"#94A3B8", "🔒":"#EF4444", "✅":"#10B981"}
-    for k in yh.KATMANLAR:
-        renk = durum_renk.get(k["durum"], "#94A3B8")
-        st.markdown(ui.temiz_html(f"""<div style="background:#0D1117;border:1px solid #1E293B;border-left:3px solid {renk};border-radius:10px;padding:12px 14px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="color:#E2E8F0;font-weight:700;font-size:0.9rem">{k['durum']} Katman {k['no']}: {k['ad']}</span></div><div style="color:#94A3B8;font-size:0.76rem;line-height:1.45;margin-bottom:6px">{k['ozet']}</div><div style="color:#64748B;font-size:0.7rem;line-height:1.4"><b>Nasıl:</b> {k['nasil']}</div><div style="color:#475569;font-size:0.68rem;margin-top:4px"><b>Önkoşul:</b> {k['onkosul']}</div></div>"""), unsafe_allow_html=True)
+    for k in _katmanlar:
+        renk = durum_renk.get(k.get("durum",""), "#94A3B8")
+        st.markdown(ui.temiz_html(f"""<div style="background:#0D1117;border:1px solid #1E293B;border-left:3px solid {renk};border-radius:10px;padding:12px 14px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="color:#E2E8F0;font-weight:700;font-size:0.9rem">{k.get('durum','')} Katman {k.get('no','?')}: {k.get('ad','')}</span></div><div style="color:#94A3B8;font-size:0.76rem;line-height:1.45;margin-bottom:6px">{k.get('ozet','')}</div><div style="color:#64748B;font-size:0.7rem;line-height:1.4"><b>Nasıl:</b> {k.get('nasil','')}</div><div style="color:#475569;font-size:0.68rem;margin-top:4px"><b>Önkoşul:</b> {k.get('onkosul','')}</div></div>"""), unsafe_allow_html=True)
 
     st.markdown("##### 💡 Akla Gelen Ek Fikirler")
     with st.expander("Kaybolmasın diye — ileride değerlendirilecekler"):
-        for f in yh.EK_FIKIRLER:
+        for f in _ek_fikirler:
             st.markdown(f"• {f}")
 
 st.markdown(ui.temiz_html("""
