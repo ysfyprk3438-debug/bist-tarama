@@ -1,0 +1,40 @@
+{
+  "baslangic": 100000.0,
+  "nakit": 60071.95330000001,
+  "pozisyonlar": {
+    "TCELL": {
+      "lot": 108,
+      "maliyet": 110.5,
+      "hedef": 115.59,
+      "stop": 107.79,
+      "tarih": "2026-06-26"
+    },
+    "TAVHL": {
+      "lot": 37,
+      "maliyet": 284.25,
+      "hedef": 301.05,
+      "stop": 275.29,
+      "tarih": "2026-06-26"
+    },
+    "KLNMA": {
+      "lot": 1014,
+      "maliyet": 9.15,
+      "hedef": 9.39,
+      "stop": 9.04,
+      "tarih": "2026-06-26"
+    },
+    "DEVA": {
+      "lot": 115,
+      "maliyet": 70.6,
+      "hedef": 73.4,
+      "stop": 69.03,
+      "tarih": "2026-06-26"
+    }
+  },
+  "islemler": [],
+  "karakter": "dengeli",
+  "guncelleme": "2026-06-26T05:42",
+  "deger_gecmis": [
+    99920
+  ]
+}
