@@ -9,6 +9,12 @@ GradientBoosting ENSEMBLE; yoksa numpy logistic-regression fallback ile çalış
 DÜRÜSTLÜK İLKESİ — Etkin Piyasa Hipotezi gereği %100 tahmin İMKÂNSIZDIR. Bu katman
 garanti vermez; olasılıkları KALİBRE eder (≈%5–95 bandı), zayıf/belirsiz sinyalleri
 sert eler. Kazanç, isabetten değil; isabet + risk/ödül + stop disiplininden gelir.
+
+DÜZELTME (F1, 27 Haziran 2026): walk-forward çağrısındaki "sahte sıfır" bug'ı giderildi.
+Eskiden son 'ufuk' (5) güne yapay 0 etiketi ekleniyordu → wf_dogruluk/guven biraz yanlış
+çıkıyordu. Artık walk-forward yalnızca gerçek etiketli (Xtr, ytr) ile çalışıyor.
+NOT: Bu fix yalnızca raporlanan güven sayısını düzeltir; backtest işlem kararları
+(olasilik/yon) etkilenmez.
 """
 import numpy as np
 
@@ -201,7 +207,9 @@ def ai_analiz(df, ufuk=5):
 
         Xpred = X[-1:].copy()
         olasilik, uyusmazlik, onem = _ensemble_tahmin(Xtr, ytr, Xpred)
-        wf_acc, wf_n = _walk_forward(X[20:], np.concatenate([ytr, np.zeros(ufuk, int)])[:len(X[20:])])
+        # F1 DÜZELTME: sahte sıfır padding kaldırıldı; walk-forward yalnızca
+        # gerçek etiketli (Xtr, ytr) ile çalışıyor (ikisi de uzunluk m, hizalı).
+        wf_acc, wf_n = _walk_forward(Xtr, ytr)
 
         # kalibrasyon: aşırı uçları kırp, taban oranına çek (asla 0/100 değil)
         taban = float(ytr.mean())
