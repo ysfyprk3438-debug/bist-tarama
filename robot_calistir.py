@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-robot_calistir.py — ZAMANLANMIŞ GÖREV: NOVA otomatik al-sat turu.
-Durumu yükler → tarar → al/sat kararı → kaydeder → Telegram bildirir.
-GitHub Actions her çalıştığında robot_durum.json güncellenir ve commit edilir.
+robot_calistir.py — ZAMANLANMIS GOREV: NOVA otomatik al-sat turu.
+Durumu yukler -> tarar -> al/sat karari -> kaydeder -> Telegram bildirir.
+Her turda (islem olsa da olmasa da) kisa bir ozet Telegram'a gonderilir.
 """
 import os
 import sys
@@ -15,19 +15,28 @@ import telegram_alarm as ta
 def main():
     durum = rm.yukle()
     sonuclar, _ = tara(os.environ.get("AVCI_VADE", "gunluk"))
+
     if not sonuclar:
-        print("Veri yok — tur atlandı.")
+        print("Veri yok - tur atlandi.")
+        ta.gonder("🤖 *NOVA* · tur calisti\n"
+                  "📭 Su an piyasa verisi yok (borsa kapali olabilir).\n"
+                  "Islem yapilmadi, bir sonraki turda tekrar bakacagim.")
         return 0
+
     durum, msgs = rm.tur(durum, sonuclar)
     rm.kaydet(durum)
     k = rm.karne(durum)
-    print(f"Tur bitti · değer {k['deger']}₺ · açık {k['acik']} · başarı %{k['basari']} · skor {k['skor']}/10")
+    deg = f"{k['deger']:,}".replace(",", ".")
+    print(f"Tur bitti - deger {k['deger']} - acik {k['acik']} - basari {k['basari']} - skor {k['skor']}")
+
     if msgs:
-        deg = f"{k['deger']:,}".replace(",", ".")
         ta.gonder("🤖 *NOVA* · sanal otomatik al-sat\n" + "\n".join(msgs) +
-                  f"\n\n📊 Değer {deg}₺ · başarı %{k['basari']} · skor {k['skor']}/10")
+                  f"\n\n📊 Deger {deg}₺ · basari %{k['basari']} · skor {k['skor']}/10")
     else:
-        print("İşlem yok bu tur.")
+        print("Islem yok bu tur.")
+        ta.gonder("🤖 *NOVA* · tur calisti\n"
+                  f"✅ Tarama yapildi, bu turda yeni al-sat sinyali yok.\n"
+                  f"📊 Deger {deg}₺ · acik pozisyon {k['acik']} · basari %{k['basari']} · skor {k['skor']}/10")
     return 0
 
 
