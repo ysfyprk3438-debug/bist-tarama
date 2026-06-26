@@ -113,13 +113,18 @@ def akilli_para(df):
 # ══════════════════════════════════════════════════════════════
 # POZİSYON YÖNETİMİ — risk tabanlı boyutlama
 # ══════════════════════════════════════════════════════════════
-def pozisyon_hesapla(portfoy_tl, son_fiyat, stop_fiyat, kelly_pct=None):
+def pozisyon_hesapla(portfoy_tl, son_fiyat, stop_fiyat, kelly_pct=None, max_pozisyon_pct=20.0):
+    if son_fiyat <= 0 or portfoy_tl <= 0:
+        return None
     risk_yuzde = min(kelly_pct * 0.5 if kelly_pct else 2.0, 5.0)
     max_risk_tl = portfoy_tl * (risk_yuzde / 100)
     hisse_basi_risk = son_fiyat - stop_fiyat
     if hisse_basi_risk <= 0:
         return None
-    lot = int(max_risk_tl / hisse_basi_risk)
+    risk_lot = int(max_risk_tl / hisse_basi_risk)
+    # Pozisyon büyüklüğü tavanı: tek hissede portföyün en fazla %X'i (%984 hatasının çözümü)
+    tavan_lot = int((portfoy_tl * (max_pozisyon_pct / 100.0)) / son_fiyat)
+    lot = max(0, min(risk_lot, tavan_lot))
     if lot <= 0:
         return None
     pozisyon_tl = lot * son_fiyat
@@ -129,6 +134,7 @@ def pozisyon_hesapla(portfoy_tl, son_fiyat, stop_fiyat, kelly_pct=None):
         "pozisyon_yuzde": (pozisyon_tl / portfoy_tl) * 100,
         "max_kayip_tl": lot * hisse_basi_risk,
         "risk_yuzde": risk_yuzde,
+        "tavan_uygulandi": risk_lot > tavan_lot,
     }
 
 

@@ -131,7 +131,7 @@ def sektor_rotasyon(sonuclar):
     liste.sort(key=lambda x: x["akis"], reverse=True)
 
     # Para giren (üst) ve çıkan (alt) sektörler
-    giren = [x for x in liste if x["akis"] > 0][:3]
+    giren = [x for x in liste if x["akis"] > 0 and x["momentum"] > 0][:3]
     cikan = [x for x in liste if x["akis"] < 0][-3:]
 
     return {
@@ -147,7 +147,7 @@ def rotasyon_yorum(rotasyon):
     """Sektör rotasyonunu insan diline çevirir."""
     if not rotasyon or not rotasyon["giren"]:
         return "Belirgin sektör rotasyonu yok."
-    en_guclu = rotasyon["en_guclu"]
+    en_guclu = rotasyon["giren"][0]
     yorum = f"Para en çok {en_guclu['sektor']} sektörüne akıyor"
     if en_guclu["lider"]:
         yorum += f" (lider: {en_guclu['lider']}, puan {en_guclu['lider_puan']})"
