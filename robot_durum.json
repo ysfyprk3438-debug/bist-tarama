@@ -1,6 +1,6 @@
 {
   "baslangic": 100000.0,
-  "nakit": 60071.95330000001,
+  "nakit": 36088.89292000001,
   "pozisyonlar": {
     "TCELL": {
       "lot": 108,
@@ -29,16 +29,45 @@
       "hedef": 73.4,
       "stop": 69.03,
       "tarih": "2026-06-26"
+    },
+    "AKBNK": {
+      "lot": 93,
+      "maliyet": 77.25,
+      "hedef": 81.59,
+      "stop": 74.94,
+      "tarih": "2026-06-26"
+    },
+    "YKBNK": {
+      "lot": 155,
+      "maliyet": 40.66,
+      "hedef": 43.08,
+      "stop": 39.37,
+      "tarih": "2026-06-26"
+    },
+    "TRGYO": {
+      "lot": 56,
+      "maliyet": 99.0,
+      "hedef": 101.8,
+      "stop": 97.14,
+      "tarih": "2026-06-26"
+    },
+    "EKGYO": {
+      "lot": 234,
+      "maliyet": 20.96,
+      "hedef": 21.98,
+      "stop": 20.42,
+      "tarih": "2026-06-26"
     }
   },
   "islemler": [],
   "karakter": "dengeli",
-  "guncelleme": "2026-06-26T06:38",
+  "guncelleme": "2026-06-26T15:32",
   "deger_gecmis": [
     99920,
     99920,
     99920,
     99920,
-    99920
+    99920,
+    99882
   ]
 }
