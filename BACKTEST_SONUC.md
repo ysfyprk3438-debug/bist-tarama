@@ -1,22 +1,52 @@
-# APEX — Makro Rejim Backtest (Reel Faiz Anahtarı)
+# APEX — Sağlamlık Geçidi (rejimi KIRMA testi)
 
-_2026-06-27 21:57 · XU100 · 8.0 yıl · mevduat ZAMANA GÖRE değişen gerçek faiz · histerezis (-3.0/3.0)_
+_2026-06-27 22:13 · XU100 · 8.0 yıl · brüt çarpan bazlı_
 
-## Reel-faiz rejimi: boom'da hissede, kuraklıkta mevduatta?
+## 1) Eşik taraması — edge tek noktada mı, her yerde mi?
 
-| Dönem | Makro Rejim | Statik Mevduat | Sabit %45 | Endeks | Rejim>mev&end? |
+| gir / çık | TÜM | OOS | mev(OOS) | end(OOS) | OOS geçti? |
 |---|---:|---:|---:|---:|:--:|
-| İlk yarı (IS) | 3.14 | 1.86 | 4.39 | 2.45 | ✅ |
-| İkinci yarı (OOS) | 6.48 | 3.01 | 4.40 | 5.80 | ✅ |
-| TÜM dönem | 20.48 | 5.61 | 19.32 | 14.28 | ✅ |
+| -1 / 1 | 21.74 | 6.53 | 3.01 | 5.84 | ✅ |
+| -1 / 3 | 21.93 | 6.53 | 3.01 | 5.84 | ✅ |
+| -1 / 5 | 20.39 | 5.97 | 3.01 | 5.84 | ✅ |
+| -3 / 1 | 18.72 | 6.53 | 3.01 | 5.84 | ✅ |
+| -3 / 3 | 20.63 | 6.53 | 3.01 | 5.84 | ✅ |
+| -3 / 5 | 19.18 | 5.97 | 3.01 | 5.84 | ✅ |
+| -5 / 1 | 14.09 | 6.53 | 3.01 | 5.84 | ✅ |
+| -5 / 3 | 14.09 | 6.53 | 3.01 | 5.84 | ✅ |
+| -5 / 5 | 13.10 | 5.97 | 3.01 | 5.84 | ✅ |
+| -8 / 1 | 14.09 | 6.53 | 3.01 | 5.84 | ✅ |
+| -8 / 3 | 14.09 | 6.53 | 3.01 | 5.84 | ✅ |
+| -8 / 5 | 13.10 | 5.97 | 3.01 | 5.84 | ✅ |
 
-_Makro rejim: 2 geçiş · %56 zaman hissede · MaxDD %-22.9_
+**12 eşik kombinasyonunun 12'i OOS'ta mevduat+endeksi geçti.** Edge geniş eşik aralığında yaşıyor → kırılgan değil.
 
-## Karar
+## 2) Gecikme stresi — makro veri geç gelirse?
 
-**Makro rejim HER İKİ yarıda mevduatı+endeksi geçti.** Reel faiz işareti, boom'da hisseye girip kuraklıkta mevduata kaçarak gerçek bir edge üretiyor — gecenin ilk OOS-sağlam sonucu. Sonraki: hissedeyken endeks yerine temel-seçim/momentum koy (alfa üstüne alfa), eşik duyarlılığı, ileri test.
+| lag (gün) | TÜM | OOS | OOS geçti? |
+|---|---:|---:|:--:|
+| 35 | 20.63 | 6.53 | ✅ |
+| 60 | 21.51 | 6.74 | ✅ |
+| 90 | 17.50 | 5.90 | ✅ |
 
-> Mevduat artık sabit %45 değil, o dönemin gerçek faizi (2020-21'de ~%12, 2024-25'te ~%45-50). Bu, boom'da hisseyi haksız cezalandıran eski varsayımı düzeltir.
+**3 gecikme senaryosunun 3'i OOS'ta geçti.** 90 güne kadar gecikmeye dayanıklı.
+
+## 3) Plasebo — 2 geçiş + %56 hisse-süresi rastgele yerleşseydi?
+
+Gerçek rejim brüt: **20.63×** · 2 geçiş · %56 hissede
+
+| Plasebo | 4000 sahte ortalama | Gerçek yüzdelik |
+|---|---:|---:|
+| B: rastgele tek blok (D-E-D) | 19.77× | **%55.7** |
+| A: aylık rastgele (oran eşli) | 10.19× | **%97.4** |
+
+**Plasebo B yorumu:** gerçek rejim ortalarda → zamanlama şanstan ayırt edilemiyor (kötü işaret).
+
+## Geçit Kararı (dereceli)
+
+Eşik sağlamlığı: %100 · Gecikme sağlamlığı: %100 · Plasebo-B ayrışması: yok
+
+**Rejim eşik+gecikmeye dayanıklı ama plasebodan net ayrışmıyor.** Mekanizma sağlam, ama 2 geçişin tam yeri kısmen şans olabilir. Mantıklı sonuç: ileri teste değer, ama tek başına 'kanıt' sayma — hissedeyken seçim ekleyip (momentum/temel) plasebo ayrışmasını güçlendirmeyi dene.
 
 ---
-*Reel faiz = politika faizi − yıllık enflasyon (statik kaynaklı tablo). Karar t, getiri t+1; enflasyon ~1 ay gecikmeli — leakage yok.*
+*Brüt çarpan bazlı (zamanlama becerisini izole etmek için sürtünme hariç; gerçek rejim 2 geçişte sürtünme ihmal edilebilir). Karar t, getiri t+1; enflasyon lag'li — leakage yok.*
