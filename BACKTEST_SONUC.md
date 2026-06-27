@@ -1,6 +1,6 @@
 # APEX — Dürüst Backtest Sonucu (istatistiksel karar)
 
-_Üretim: 2026-06-27 14:59 · vade: haftalik · komisyon dahil · karar eşiği: havuz t ≥ 2.0 ve N ≥ 100_
+_Üretim: 2026-06-27 15:17 · vade: haftalik · komisyon dahil · karar eşiği: havuz t ≥ 2.0 ve N ≥ 100_
 
 ## SORU: Strateji mevduatı GÜVENİLİR biçimde yeniyor mu?
 
