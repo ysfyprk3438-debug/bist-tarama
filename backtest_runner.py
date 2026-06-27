@@ -1,161 +1,237 @@
 """
 ═══════════════════════════════════════════════════════════════
-APEX · DÜRÜST BACKTEST KOŞUCUSU  (v5 — ÇOK VADELİ karşılaştırma)
+APEX · CROSS-SECTIONAL BACKTEST  (v6 — HEP YATIRIMDA, TOP-N SEÇİM)
 ═══════════════════════════════════════════════════════════════
-Vizyon: sistem her fırsatı en uygun vadede değerlendirsin (gün içi /
-günlük / haftalık). İLK ADIM: üç vadeyi de AYRI ÖLÇ, hangisinde
-al-tut'u/mevduatı yenen bir edge var gör. Para ayırmadan önce kanıt.
+Teşhis (çok-vadeli audit): hiçbir vade al-tut'u yenemedi çünkü strateji
+NAKDE geçince, +%227 yapan piyasaya otomatik kaybediyor (cash drag).
+AMA hisselerin ~%42'si tek tek endeksi geçiyor.
 
-Her vade kendi penceresinde, kendi al-tut'una karşı kıyaslanır.
-Maliyet gerçekçi (komisyon+slippage+stop kayma). Walk-forward, leakage yok.
+YENİ HİPOTEZ: piyasayı ZAMANLAMA bırak. HEP %100 yatırımda kal, sinyalin
+en yüksek puanladığı top-N hisseyi tut, periyodik dengele. Soru: SEÇİM,
+yatırımda kalarak XU100'ü yenebiliyor mu? (Fonların gerçekten oynadığı oyun.)
 
-UYARILAR:
- - Gün içi (15dk): veri ~son 60 günle sınırlı (Yahoo). Kısa rejim penceresi.
- - Gün içi 15dk GECİKMEYİ modellemez → canlı için İYİMSER. Edge görünürse
-   sonraki adım: 1-bar geç giriş ekleyip yeniden ölç.
+İki sıralama (scorer) kıyaslanır:
+  • MOMENTUM : son 126 bar getirisi (klasik cross-sectional faktör)
+  • SİNYAL   : bizim hibrit puanımız (ateşleyen hisseler; kalan ağırlık → endeks)
+Kıyas çıtaları: XU100 al-tut · eşit-ağırlık-TÜM al-tut · mevduat.
+Maliyet: devir başına komisyon+slippage. Leakage yok (skor t'de, getiri t+1).
 """
 
-import datetime
-import traceback
+import datetime, traceback
 import numpy as np
+import pandas as pd
 
-STRATEJI    = "hibrit"
-VADE_LISTE  = ["gun_ici", "gunluk", "haftalik"]
-BASLANGIC   = 120
-HISSE_SAYISI = 0
-T_ESIK      = 2.0
-N_MIN       = 100
-
-
-def _fmt(x, n=2):
-    try:
-        return f"{x:.{n}f}"
-    except Exception:
-        return str(x)
+N_HOLD     = 12          # portföydeki hisse sayısı (top-N)
+REBAL_GUN  = 21          # ~aylık dengeleme
+BASLANGIC  = 130         # momentum/sinyal için ısınma
+MOM_LB     = 126         # momentum geriye bakış (bar)
+FETCH_GUN  = 1500
 
 
-def _fetch_gun(ayar):
-    # 15dk veri Yahoo'da ~60 günle sınırlı; günlük vadelerde uzun geçmiş
-    return 59 if ayar.get("aralik") == "15m" else 1500
+def _yillik(nav, gun):
+    if gun <= 0 or nav <= 0: return -100.0
+    return ((nav) ** (365.0 / gun) - 1) * 100
 
 
-def _vade_calistir(vkey, motor, veri_al, VADE_AYAR, backtest_calistir, KOD_SEKTOR, BIST_TUM):
-    from backtest import _FR
-    ayar = VADE_AYAR[vkey]
-    fg = _fetch_gun(ayar)
-    kodlar = BIST_TUM if HISSE_SAYISI <= 0 else BIST_TUM[:HISSE_SAYISI]
+def _sharpe_mdd(nav_seri, mevduat_gunluk):
+    r = nav_seri.pct_change().dropna()
+    if len(r) < 5:
+        return 0.0, 0.0
+    ex = r - mevduat_gunluk
+    sd = ex.std()
+    sharpe = (ex.mean() / sd * np.sqrt(252)) if sd > 0 else 0.0
+    huzme = nav_seri / nav_seri.cummax() - 1.0
+    return float(sharpe), float(huzme.min() * 100)
 
-    endeks_df = None
-    try:
-        endeks_df, _ = veri_al("XU100", gun=fg, min_gun=ayar["min_gun"], aralik=ayar["aralik"])
-    except Exception:
-        pass
-    endeks_altut = None
-    if endeks_df is not None and len(endeks_df) > BASLANGIC + 10:
-        b = float(endeks_df["Close"].iloc[BASLANGIC]); s = float(endeks_df["Close"].iloc[-5])
-        if b > 0:
-            endeks_altut = ((s * (1 - _FR) - b * (1 + _FR)) / (b * (1 + _FR))) * 100
 
-    havuz = []; s_win = []; b_win = []
-    test_edilen = altut_yenen = 0
-    for idx, kod in enumerate(kodlar, 1):
-        try:
-            df, _ = veri_al(kod, gun=fg, min_gun=ayar["min_gun"], aralik=ayar["aralik"])
-            if df is None or len(df) < BASLANGIC + 25:
-                continue
-            r = backtest_calistir(df, ayar, motor, KOD_SEKTOR.get(kod, "Diğer"),
-                                  baslangic_gun=BASLANGIC, endeks_df=endeks_df)
-            if not r or r.get("islem_sayisi", 0) == 0:
-                continue
-            test_edilen += 1
-            havuz.extend(r.get("fazla_list", []))
-            s_win.append(r["strateji_window"]); b_win.append(r["buyhold_window"])
-            if r.get("altut_yeniyor"):
-                altut_yenen += 1
-        except Exception as e:
-            print(f"  {vkey}/{kod}: HATA {e}")
+def _devir_maliyet(eski, yeni, fr):
+    syms = set(eski) | set(yeni)
+    tt = sum(abs(yeni.get(s, 0.0) - eski.get(s, 0.0)) for s in syms)
+    return fr * tt   # her birim devre tek-yön sürtünme (al+sat = abs fark toplamı)
 
-    X = np.asarray(havuz, dtype=float)
-    N = int(X.size)
-    mu = float(np.mean(X)) if N else 0.0
-    sd = float(np.std(X, ddof=1)) if N > 1 else 0.0
-    t = (mu / (sd / np.sqrt(N))) if (N > 1 and sd > 0) else 0.0
-    return {
-        "vade": vkey, "ad": ayar["ad"], "aralik": ayar.get("aralik"),
-        "N": N, "mu": mu, "t": t, "test_edilen": test_edilen,
-        "strateji_win": float(np.mean(s_win)) if s_win else 0.0,
-        "buyhold_win": float(np.mean(b_win)) if b_win else 0.0,
-        "endeks_altut": endeks_altut, "altut_yenen": altut_yenen,
-    }
+
+def _topn(skor_seri, n):
+    s = skor_seri.dropna()
+    s = s[np.isfinite(s)]
+    if len(s) == 0:
+        return []
+    return list(s.sort_values(ascending=False).head(n).index)
+
+
+def portfoy_backtest(panel, xu, skorla, n_hold, rebal, baslangic, fr, mevduat_gunluk):
+    """panel: dates×symbol Close (XU100 takvimine hizalı, ffill). xu: XU100 Close serisi.
+       skorla(t_idx)->pd.Series{symbol:skor} (yalnız ≤t veri). Hep yatırımda; kalan ağ.→endeks."""
+    dates = panel.index
+    n = len(dates)
+    nav = 1.0
+    navs = [1.0]; out_dates = [dates[baslangic]]
+    holdings = {}
+    sinyal_sayac = []
+    for t in range(baslangic, n - 1):
+        if (t - baslangic) % rebal == 0:
+            skor = skorla(t)
+            picks = _topn(skor, n_hold)
+            sinyal_sayac.append(len(picks))
+            yeni = {s: 1.0 / n_hold for s in picks}   # picks<n_hold ise kalan ağırlık→endeks
+            nav *= (1 - _devir_maliyet(holdings, yeni, fr))
+            holdings = yeni
+        # günlük getiri t→t+1
+        r = 0.0; wsum = 0.0
+        for s, w in holdings.items():
+            p0 = panel[s].iat[t]; p1 = panel[s].iat[t + 1]
+            if p0 > 0 and np.isfinite(p0) and np.isfinite(p1):
+                r += w * (p1 / p0 - 1.0); wsum += w
+        wrem = 1.0 - wsum
+        if wrem > 1e-9:
+            i0 = xu.iat[t]; i1 = xu.iat[t + 1]
+            if i0 > 0 and np.isfinite(i0) and np.isfinite(i1):
+                r += wrem * (i1 / i0 - 1.0)
+        nav *= (1 + r)
+        navs.append(nav); out_dates.append(dates[t + 1])
+    nav_seri = pd.Series(navs, index=out_dates)
+    ort_sinyal = float(np.mean(sinyal_sayac)) if sinyal_sayac else 0.0
+    return nav_seri, ort_sinyal
 
 
 def calistir():
     from veri import veri_al, VADE_AYAR
-    from backtest import backtest_calistir, _FR, STOP_EKSTRA, MEVDUAT_YILLIK
+    from backtest import _FR, MEVDUAT_YILLIK, _MEVDUAT_GUNLUK
     from tarama_core import BIST_TUM, KOD_SEKTOR
+    from hibrit_analiz import analiz_et as hibrit, HIBRIT_ESIK
 
-    if STRATEJI == "hibrit":
-        from hibrit_analiz import analiz_et as motor, HIBRIT_ESIK
-        strateji_ad = f"HİBRİT (eşik={HIBRIT_ESIK})"
-    else:
-        from analiz import analiz_et as motor
-        strateji_ad = "TEKNİK (saf)"
+    ayar = VADE_AYAR["gunluk"]
+    kodlar = list(dict.fromkeys(BIST_TUM))
 
-    sonuclar = []
-    for vkey in VADE_LISTE:
-        print(f"\n=== VADE: {vkey} ===")
+    # XU100 ana takvim
+    xu_df, _ = veri_al("XU100", gun=FETCH_GUN, min_gun=200, aralik="1d")
+    if xu_df is None or len(xu_df) < BASLANGIC + 60:
+        print("XU100 verisi yok — durdu."); return
+    takvim = xu_df.index
+    xu = xu_df["Close"].reindex(takvim).ffill()
+
+    # Fiyat paneli + tam df'ler (sinyal scorer için)
+    paneller = {}
+    seriler = {}
+    for kod in kodlar:
         try:
-            s = _vade_calistir(vkey, motor, veri_al, VADE_AYAR, backtest_calistir, KOD_SEKTOR, BIST_TUM)
-            sonuclar.append(s)
-            print(f"  N={s['N']} mu={_fmt(s['mu'])} t={_fmt(s['t'],1)} "
-                  f"strateji={_fmt(s['strateji_win'])} al-tut={_fmt(s['buyhold_win'])}")
+            df, _ = veri_al(kod, gun=FETCH_GUN, min_gun=200, aralik="1d")
+            if df is None or len(df) < BASLANGIC + 60:
+                continue
+            paneller[kod] = df
+            seriler[kod] = df["Close"].reindex(takvim).ffill()
         except Exception as e:
-            print(f"  VADE HATA {vkey}: {e}"); traceback.print_exc()
+            print(f"  {kod}: {e}")
+    if len(seriler) < N_HOLD + 5:
+        print(f"Yeterli hisse yok ({len(seriler)}) — durdu."); return
+    panel = pd.DataFrame(seriler)
+    gecerli = [k for k in paneller if k in panel.columns]
+    print(f"Panel: {len(gecerli)} hisse × {len(takvim)} gün")
+
+    toplam_gun = (takvim[-1] - takvim[BASLANGIC]).days
+    yil = toplam_gun / 365.0
+
+    # ── SCORER 1: MOMENTUM ──
+    def skor_momentum(t):
+        if t - MOM_LB < 0:
+            return pd.Series(dtype=float)
+        now = panel.iloc[t]; then = panel.iloc[t - MOM_LB]
+        return (now / then - 1.0)
+
+    # ── SCORER 2: HİBRİT SİNYAL PUANI ──
+    def skor_sinyal(t):
+        tarih = takvim[t]
+        xs = xu.loc[:tarih]
+        out = {}
+        for kod in gecerli:
+            sdf = paneller[kod].loc[:tarih]
+            if len(sdf) < 60:
+                continue
+            try:
+                r = hibrit(kod, sdf, ayar, 100000, 1.0, KOD_SEKTOR.get(kod, "Diğer"),
+                           detayli=False, backtest=True, endeks_close=xs)
+                if r and r.get("puan") is not None:
+                    out[kod] = float(r["puan"])
+            except Exception:
+                pass
+        return pd.Series(out, dtype=float)
+
+    sonuc = {}
+    for ad, fn in [("Momentum (top-N)", skor_momentum), ("Hibrit Sinyal (top-N)", skor_sinyal)]:
+        print(f"\n=== {ad} ===")
+        try:
+            nav_seri, ort_sin = portfoy_backtest(panel, xu, fn, N_HOLD, REBAL_GUN,
+                                                 BASLANGIC, _FR, _MEVDUAT_GUNLUK)
+            son = float(nav_seri.iloc[-1])
+            sh, mdd = _sharpe_mdd(nav_seri, _MEVDUAT_GUNLUK)
+            sonuc[ad] = {"nav": son, "yillik": _yillik(son, toplam_gun),
+                         "sharpe": sh, "mdd": mdd, "ort_sinyal": ort_sin}
+            print(f"  NAV={son:.3f} yıllık={sonuc[ad]['yillik']:.1f}% Sharpe={sh:.2f} mdd={mdd:.1f}%")
+        except Exception as e:
+            print(f"  HATA {ad}: {e}"); traceback.print_exc()
+
+    # ── ÇITALAR ──
+    # XU100 al-tut
+    xb = float(xu.iloc[BASLANGIC]); xs = float(xu.iloc[-1])
+    xu_nav = (xs * (1 - _FR)) / (xb * (1 + _FR)) if xb > 0 else 1.0
+    xu_seri = (xu.iloc[BASLANGIC:] / xb)
+    xu_sh, xu_mdd = _sharpe_mdd(xu_seri, _MEVDUAT_GUNLUK)
+    # Eşit ağırlık TÜM hisse al-tut
+    ew_carp = []
+    for k in gecerli:
+        p0 = panel[k].iloc[BASLANGIC]; p1 = panel[k].iloc[-1]
+        if p0 > 0 and np.isfinite(p0) and np.isfinite(p1):
+            ew_carp.append((p1 * (1 - _FR)) / (p0 * (1 + _FR)))
+    ew_nav = float(np.mean(ew_carp)) if ew_carp else 1.0
+    # Mevduat
+    mev_nav = (1 + MEVDUAT_YILLIK) ** yil
 
     # ── RAPOR ──
     L = []
-    L.append(f"# APEX — Çok Vadeli Audit · {strateji_ad}")
+    L.append("# APEX — Cross-Sectional Audit · Hep Yatırımda, Top-N Seçim")
     L.append("")
-    L.append(f"_Üretim: {datetime.datetime.now():%Y-%m-%d %H:%M} · maliyet: komisyon+slippage+stop-kayma · "
-             f"her vade KENDİ penceresi & KENDİ al-tut'una karşı_")
+    L.append(f"_Üretim: {datetime.datetime.now():%Y-%m-%d %H:%M} · {len(gecerli)} hisse · "
+             f"{yil:.1f} yıl · top-{N_HOLD}, ~{REBAL_GUN}g dengeleme · maliyet: komisyon+slippage · leakage yok_")
     L.append("")
-    L.append("## Vade Karşılaştırması (hangi vadede edge var?)")
+    L.append("## Soru: Seçim, yatırımda kalarak XU100'ü yeniyor mu?")
     L.append("")
-    L.append("| Vade | Aralık | N | Mevduat-üstü% | t | Strateji(NAV)% | Al-tut% | Endeks al-tut% | Al-tut'u geçen |")
-    L.append("|---|---|---:|---:|---:|---:|---:|---:|:--:|")
-    for s in sonuclar:
-        ea = _fmt(s["endeks_altut"]) if s["endeks_altut"] is not None else "—"
-        L.append(f"| {s['ad']} | {s['aralik']} | {s['N']} | {_fmt(s['mu'])} | {_fmt(s['t'],1)} | "
-                 f"{_fmt(s['strateji_win'])} | {_fmt(s['buyhold_win'])} | {ea} | "
-                 f"{s['altut_yenen']}/{s['test_edilen']} |")
+    L.append("| Strateji | Son NAV (×) | Getiri% | Yıllık% | Sharpe | MaxDD% | XU100'ü geçti? |")
+    L.append("|---|---:|---:|---:|---:|---:|:--:|")
+    for ad, d in sonuc.items():
+        gecti = "✅" if d["nav"] > xu_nav else "❌"
+        L.append(f"| {ad} | {d['nav']:.2f} | {(d['nav']-1)*100:.1f} | {d['yillik']:.1f} | "
+                 f"{d['sharpe']:.2f} | {d['mdd']:.1f} | {gecti} |")
+    L.append(f"| _XU100 al-tut_ | {xu_nav:.2f} | {(xu_nav-1)*100:.1f} | {_yillik(xu_nav,toplam_gun):.1f} | "
+             f"{xu_sh:.2f} | {xu_mdd:.1f} | — |")
+    L.append(f"| _Eşit-ağırlık TÜM al-tut_ | {ew_nav:.2f} | {(ew_nav-1)*100:.1f} | "
+             f"{_yillik(ew_nav,toplam_gun):.1f} | — | — | "
+             f"{'✅' if ew_nav>xu_nav else '❌'} |")
+    L.append(f"| _Mevduat (~%{int(MEVDUAT_YILLIK*100)})_ | {mev_nav:.2f} | {(mev_nav-1)*100:.1f} | "
+             f"{int(MEVDUAT_YILLIK*100)}.0 | — | — | "
+             f"{'✅' if mev_nav>xu_nav else '❌'} |")
     L.append("")
 
-    # Manşet: herhangi bir vade her iki çıtayı da geçiyor mu?
-    kazanan = []
-    for s in sonuclar:
-        mevduat_ok = (s["N"] >= N_MIN) and (s["mu"] > 0) and (s["t"] >= T_ESIK)
-        altut_ok = s["strateji_win"] > s["buyhold_win"]
-        if mevduat_ok and altut_ok:
-            kazanan.append(s["ad"])
+    # ── KARAR ──
+    kazanan = [ad for ad, d in sonuc.items() if d["nav"] > xu_nav]
     L.append("## Karar")
     L.append("")
     if kazanan:
-        L.append(f"**Edge sinyali olan vade(ler): {', '.join(kazanan)}** — hem mevduatı (t≥{T_ESIK}) "
-                 f"hem al-tut'u geçti. KANIT değil, ön eleme. Sonraki: out-of-sample + (gün içiyse) "
-                 f"15dk gecikme modeli.")
+        L.append(f"**XU100'ü yatırımda kalarak geçen seçim: {', '.join(kazanan)}.** Cash drag olmadan "
+                 f"seçim alfa üretiyor. KANIT değil ön sinyal — sonraki: out-of-sample (veriyi ikiye böl), "
+                 f"N ve dengeleme sıklığı duyarlılığı, Sharpe'ın mevduatı geçmesi.")
     else:
-        L.append("**Hiçbir vade her iki çıtayı geçemedi.** Hiçbiri al-tut'u + mevduatı birlikte yenmiyor. "
-                 "Yani 'doğru vadeyi seç' yaklaşımı tek başına edge üretmiyor — sorun vade seçimi değil, "
-                 "sinyal ailesi. Sonraki kaldıraç: farklı alfa kaynağı (fundamental/makro veya order-flow) "
-                 "ya da 'al-tut'a yakın kal' (daha az gir-çık) varyantı.")
+        L.append("**Hiçbir seçim XU100'ü geçemedi.** Bu evrende cross-sectional seçim de endeksi yenmiyor — "
+                 "muhtemelen hisseler fazla korele ve endeks birkaç dev hisseyle taşınıyor. Sonraki kaldıraç: "
+                 "(a) farklı faktör (değer/kalite/düşük-volatilite), (b) fundamental veri, ya da hedefi "
+                 "değiştir: 'endeksi yenmek' yerine 'benzer getiri + daha düşük MaxDD' (risk-ayarlı).")
     L.append("")
-    L.append("> Not: Gün içi (15dk) penceresi ~60 günle sınırlı (Yahoo) ve 15dk GECİKMEYİ modellemez → "
-             "canlı için İYİMSER. Eğer gün içi edge gösterirse, bir bar geç giriş ekleyip yeniden ölçeceğiz.")
+    if "Hibrit Sinyal (top-N)" in sonuc:
+        os_ = sonuc["Hibrit Sinyal (top-N)"]["ort_sinyal"]
+        L.append(f"> Sinyal scorer dengeleme başına ort. {os_:.1f} hisse işaretledi (top-{N_HOLD} hedefi). "
+                 f"{N_HOLD}'in altındaysa kalan ağırlık endekste tutuldu (hep yatırımda).")
     L.append("")
     L.append("---")
-    L.append(f"*Strateji: {strateji_ad}. Komisyon %0.2+slippage %0.15 (tek yön), stop ekstra "
-             f"%{_fmt(STOP_EKSTRA*100,1)}. Nakitte mevduat (~%{int(MEVDUAT_YILLIK*100)}). "
-             f"Walk-forward, leakage yok.*")
+    L.append(f"*Hep %100 yatırımda. Komisyon %0.2+slippage %0.15 (tek yön, devirde). "
+             f"Skor t kapanışında, getiri t+1 — leakage yok.*")
 
     metin = "\n".join(L)
     with open("BACKTEST_SONUC.md", "w", encoding="utf-8") as f:
