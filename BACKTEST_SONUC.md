@@ -1,6 +1,6 @@
 # APEX — Rejim Tahsisi Audit · Hisse mi Mevduat mı, Ne Zaman?
 
-_Üretim: 2026-06-27 19:24 · 94 hisse · 7.4 yıl · maliyet: komisyon+slippage · mevduat takvim-doğru · leakage yok_
+_Üretim: 2026-06-27 19:44 · 94 hisse · 7.4 yıl · maliyet: komisyon+slippage · mevduat takvim-doğru · leakage yok_
 
 ## Soru: Rejim anahtarı HEM mevduatı HEM endeksi geçiyor mu?
 
