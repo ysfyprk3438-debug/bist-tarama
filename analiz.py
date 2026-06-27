@@ -141,7 +141,7 @@ def pozisyon_hesapla(portfoy_tl, son_fiyat, stop_fiyat, kelly_pct=None, max_pozi
 # ══════════════════════════════════════════════════════════════
 # ANA ANALİZ — vade bazlı sinyal üretimi
 # ══════════════════════════════════════════════════════════════
-def analiz_et(kod, df, vade_ayar, portfoy_tl, carpan, sektor, detayli=True, endeks_close=None):
+def analiz_et(kod, df, vade_ayar, portfoy_tl, carpan, sektor, detayli=True, endeks_close=None, backtest=False):
     """
     Bir hissenin verisini alıp sinyal üretir.
     Sinyal yoksa None döner (sebep önemli değil — eleme normal).
@@ -154,10 +154,11 @@ def analiz_et(kod, df, vade_ayar, portfoy_tl, carpan, sektor, detayli=True, ende
         return None
 
     # Veri tazeliği — son veri 10 günden eskiyse atla
+    # backtest=True iken atlanır: geçmiş dilimlerle test yapılabilsin (canlı yol DEĞİŞMEZ).
     son_tarih = df.index[-1]
     if hasattr(son_tarih, "date"):
         son_tarih = son_tarih.date()
-    if (datetime.date.today() - son_tarih).days > 10:
+    if not backtest and (datetime.date.today() - son_tarih).days > 10:
         return None
 
     k, h, l, v = df["Close"], df["High"], df["Low"], df["Volume"]

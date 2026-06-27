@@ -10,6 +10,10 @@ BACKTEST + SEKTÖR ISI HARİTASI — BIST Tarama v4
 
 import numpy as np
 
+# ── Dürüst ölçüm sabitleri ──
+KOMISYON_ORANI = 0.002      # işlem başına tek yön (%0.2); gidiş-dönüş ~%0.4
+MEVDUAT_YILLIK = 0.45       # Türk mevduat faizi ~%45/yıl — gerçek kıyas ölçütü
+
 
 # ══════════════════════════════════════════════════════════════
 # BACKTEST — geçmişe dönük strateji testi
@@ -33,7 +37,7 @@ def backtest_calistir(df, vade_ayar, analiz_fonk, sektor="Test", baslangic_gun=1
     while i < son_idx:
         # O güne kadarki veriyle analiz yap (geleceği görme!)
         gecmis_df = df.iloc[:i].copy()
-        r = analiz_fonk("BT", gecmis_df, vade_ayar, 100000, 1.0, sektor, detayli=False)
+        r = analiz_fonk("BT", gecmis_df, vade_ayar, 100000, 1.0, sektor, detayli=False, backtest=True)
 
         if r is None:
             i += 1
@@ -62,10 +66,14 @@ def backtest_calistir(df, vade_ayar, analiz_fonk, sektor="Test", baslangic_gun=1
             sonuc = "AÇIK"
             cikis_fiyat = float(df.iloc[min(i + 30, len(df) - 1)]["Close"])
 
-        getiri_pct = ((cikis_fiyat - giris) / giris) * 100
+        # Komisyon: alışta +%0.2, satışta %0.2 düşülür (gidiş-dönüş ~%0.4).
+        # Brüt getiri kâğıt üstünde güzel görünür; net getiri gerçeği söyler.
+        K = KOMISYON_ORANI
+        brut_pct = ((cikis_fiyat - giris) / giris) * 100
+        getiri_pct = ((cikis_fiyat * (1 - K) - giris * (1 + K)) / giris) * 100
         islemler.append({
             "giris": giris, "cikis": cikis_fiyat, "sonuc": sonuc,
-            "getiri_pct": getiri_pct, "gun": gun_sayisi,
+            "getiri_pct": getiri_pct, "brut_pct": brut_pct, "gun": gun_sayisi,
         })
 
         # İşlem kapandıktan sonra devam et (üst üste binmesin)
@@ -79,11 +87,31 @@ def backtest_calistir(df, vade_ayar, analiz_fonk, sektor="Test", baslangic_gun=1
     hedef_tutan = [x for x in islemler if x["sonuc"] == "HEDEF"]
     stop_yiyen = [x for x in islemler if x["sonuc"] == "STOP"]
 
-    # Bileşik getiri (her işleme eşit ağırlık)
+    # Bileşik getiri (her işleme eşit ağırlık, KOMİSYON DAHİL)
     bilesik = 1.0
     for g in getiriler:
         bilesik *= (1 + g / 100)
     bilesik_pct = (bilesik - 1) * 100
+
+    # ── MEVDUAT KIYASI (gerçek başarı ölçütü) ──
+    # Her işlemi, tutulduğu gün kadar mevduatta beklemeye karşı kıyasla.
+    fazlalar = []
+    for x in islemler:
+        gun = max(x["gun"], 1)
+        mevduat_pct = ((1 + MEVDUAT_YILLIK) ** (gun / 365.0) - 1) * 100
+        fazlalar.append(x["getiri_pct"] - mevduat_pct)
+    ort_fazla = float(np.mean(fazlalar))          # işlem başına mevduat ÜSTÜ net getiri
+    std_fazla = float(np.std(fazlalar)) if len(fazlalar) > 1 else 0.0
+    fazla_sharpe = (ort_fazla / std_fazla) if std_fazla > 0 else 0.0
+
+    toplam_gun = sum(max(x["gun"], 1) for x in islemler)
+    # Piyasada-iken yıllıklandırılmış (boş/nakit zamanı HARİÇ — iyimser tavan)
+    if toplam_gun > 0 and bilesik > 0:
+        strateji_yillik = ((bilesik) ** (365.0 / toplam_gun) - 1) * 100
+    else:
+        strateji_yillik = -100.0
+    mevduat_yillik_pct = MEVDUAT_YILLIK * 100
+    mevduati_yeniyor = (ort_fazla > 0) and (strateji_yillik > mevduat_yillik_pct)
 
     return {
         "islem_sayisi": len(islemler),
@@ -92,11 +120,18 @@ def backtest_calistir(df, vade_ayar, analiz_fonk, sektor="Test", baslangic_gun=1
         "basari_pct": len(kazanan) / len(islemler) * 100,
         "hedef_tutan": len(hedef_tutan),
         "stop_yiyen": len(stop_yiyen),
-        "ort_getiri": np.mean(getiriler),
-        "toplam_bilesik": bilesik_pct,
+        "ort_getiri": np.mean(getiriler),            # net (komisyon dahil)
+        "ort_brut": np.mean([x["brut_pct"] for x in islemler]),
+        "toplam_bilesik": bilesik_pct,               # net bileşik
         "en_iyi": max(getiriler),
         "en_kotu": min(getiriler),
         "ort_gun": np.mean([x["gun"] for x in islemler]),
+        # mevduat kıyası
+        "ort_mevduat_ustu": ort_fazla,
+        "mevduat_ustu_sharpe": fazla_sharpe,
+        "strateji_yillik": strateji_yillik,
+        "mevduat_yillik": mevduat_yillik_pct,
+        "mevduati_yeniyor": mevduati_yeniyor,
     }
 
 
