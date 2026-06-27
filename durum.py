@@ -1,116 +1,131 @@
+# -*- coding: utf-8 -*-
 """
 ═══════════════════════════════════════════════════════════════
 ║                                                               ║
-║   📍 BIST PARA AVCISI — DURUM PANOSU                          ║
-║   BURADAYIZ. Yeni oturumda ÖNCE BUNU OKU.                     ║
+║   📍 APEX (BİST) — DURUM PANOSU / KONTROL NOKTASI            ║
+║   YENİ OTURUMDA ÖNCE BUNU OKU. Tüm bağlam burada.            ║
 ║                                                               ║
 ═══════════════════════════════════════════════════════════════
 
-Bu dosya projenin KONTROL NOKTASIDIR.
-Her geliştirme oturumunun SONUNDA güncellenir.
-Yeni bir sohbete başlarken Claude önce bunu okur → tüm bağlamı alır.
+Bu dosya projenin HAFIZASIDIR. Her oturumun sonunda güncellenir.
+Yeni bir sohbet açıldığında Claude önce bunu + yol_haritasi.py'yi okur,
+böylece geçmiş bağlamı sıfırdan kurmadan kaldığı yerden devam eder.
 """
+
+SURUM = "v5.0 — APEX (komple bakım + dürüstlük hattı)"
+SON_GUNCELLEME = "27 Haziran 2026 — komple kod bakımı yapıldı, teşhis çıkarıldı, baseline'a geçiliyor"
+
+# ══════════════════════════════════════════════════════════════
+# PROJE KİMLİĞİ (değişmez çerçeve)
+# ══════════════════════════════════════════════════════════════
+KIMLIK = {
+    "ad": "APEX — BIST-100 AI tarama + sanal (paper) ticaret terminali",
+    "veri": "15 dk gecikmeli günlük OHLCV (Yahoo birincil + İş Yatırım yedek)",
+    "basari_kriteri": "Risk-düzeltilmiş bazda Türk mevduat faizini (~%45 yıllık) yenmek. "
+                      "Citadel/Renaissance KIYASI DEĞİL — 15dk gecikme hız-bağımlı stratejileri yapısal olarak dışlar.",
+    "max_dd_hedef": "~%1.5 (uzun vade modu)",
+    "repo": "github.com/ysfyprk3438-debug/bist-tarama (branch: main)",
+    "deploy": "Streamlit Community Cloud (app: arayuz.py mobil native UI) + GitHub Actions cron (NOVA robot + Telegram)",
+    "calisma_modu": "Claude proje lideri gibi davranır: 'şu mu bu mu' diye sormaz, "
+                    "ne yapılacağını söyler ve ekranda adım adım yönlendirir. Türkçe çalışılır. "
+                    "Dürüst, süssüz değerlendirme tercih edilir.",
+}
 
 # ══════════════════════════════════════════════════════════════
 # ŞU AN NEREDEYİZ
 # ══════════════════════════════════════════════════════════════
-SURUM = "v4.1"
-SON_GUNCELLEME = "İlk tam sürüm — 12 modül tamamlandı"
-
 SU_AN = {
-    "asama": "Canlıya çıkış öncesi — tüm kod hazır ve test edildi",
-    "siradaki_adim": "GitHub'a 12 dosyayı yükle → Streamlit deploy → ilk taramayı gerçek veriyle izle",
-    "bekleyen_karar": "Yok — deploy'a hazır",
-    "onemli_not": "Robot karnesinin gün gün birikmesi için Supabase bağlanmalı (kalıcı saklama). Oturum içinde çalışır.",
+    "asama": "Komple bakım TAMAM → teşhis TAMAM → yeni yol haritası + hafıza yazıldı → "
+             "sıradaki: konsolide v1.0 BASELINE'ı kur ve GitHub'a yükle (temel sürüm).",
+    "robot": "NOVA cron'da canlı çalışıyor (robot_durum.json). 8 açık pozisyon "
+             "(TCELL, TAVHL, KLNMA, DEVA, AKBNK, YKBNK, TRGYO, EKGYO), başlangıç 100.000₺, "
+             "portföy ~başabaşa yakın (~99.9k). Komisyon modellenmiş (%0.2).",
+    "ui_durustluk": "Mobil şablonda uydurma yeşil sayılar temizleniyor. "
+                    "Pas-1 (canlı): winRate→kalibre model olasılığı, sahte emir defteri→dürüst not. "
+                    "Pas-2 (HAZIR, deploy bekliyor): 124.500₺ demo bakiye + sahte pozisyonlar → "
+                    "gerçek APP.robot verisine bağlandı (renderBalance + renderCuzdan gerçek pozisyonlar).",
+    "bekleyen_karar": "Yok — baseline'ı kur.",
 }
 
 # ══════════════════════════════════════════════════════════════
-# DOSYA LİSTESİ (GitHub'a yüklenecekler)
+# KOMPLE BAKIM TEŞHİSİ (27 Haz 2026) — DÜRÜST
 # ══════════════════════════════════════════════════════════════
-DOSYALAR = [
-    "app.py            — ana uygulama, 8 sekme",
-    "veri.py           — çift kaynaklı veri katmanı",
-    "analiz.py         — vade bazlı analiz motoru",
-    "cuzdan.py         — sanal cüzdan (paper trading)",
-    "arayuz.py         — kart/HTML bileşenleri (render sorunu çözüldü)",
-    "izleme.py         — watchlist + alarm + keşke analizi",
-    "backtest.py       — backtest + sektör ısı haritası",
-    "robot.py          — otomatik strateji robotu",
-    "niyet.py          — niyet okuyucu + güven motoru",
-    "gecmis.py         — öz-ölçüm, sinyal takibi",
-    "piyasa.py         — piyasa dokusu (yığılma, rotasyon, korelasyon)",
-    "ruzgar.py         — rüzgar yönü (trend uyumu, kuyruk/karşı rüzgar)",
-    "performans.py     — robot karnesi (öz-puan, dönemsel getiri)",
-    "grafik.py         — tıklanır grafik + teknik olay tespiti (altın kesişim vb)",
-    "alarm.py          — yaklaşan olay alarmı + geri sayım (kart titreşir)",
-    "karar.py          — baş analist: tüm sinyalleri tek karara sentezler",
-    "volatilite.py     — volatilite rejimi (adaptif pozisyon/stop, strateji seçimi)",
-    "karakter.py       — Hurst üssü + relatif güç + strateji uyumu (DNA, Katman 4 tohumu)",
-    "hacim.py          — VWAP + hacim profili (POC, değer alanı, kurumsal seviyeler)",
-    "zaman.py          — çoklu zaman dilimi onayı (üst trend teyidi, tuzak filtresi)",
-    "yol_haritasi.py   — vizyon + katmanlar (projenin hafızası)",
-    "durum.py          — BU DOSYA (kontrol noktası)",
-    "requirements.txt  — streamlit, pandas, numpy, requests, matplotlib",
+# Kısa hüküm: Sistem mühendislik olarak olgun ama KANITLANMIŞ EDGE YOK.
+# Daha derin kalıp: en dürüst bileşenler canlı karar yolundan DIŞLANMIŞ.
+TESHIS = {
+    "1_tutarlilik_defekti": (
+        "Dürüst motorlar canlı yola bağlı değil. (a) karar.py av_skoru kalibre ML'i "
+        "(ai_model) HİÇ kullanmıyor; skor = kural-bazlı güven → gösterge 'AV 91/KESİN AL' "
+        "derken ML 'NÖTR %50' diyebiliyor; robot da av'a göre alıyor, yani dürüst ML'i değil "
+        "şişmiş kural-skorunu trade ediyor. (b) İki risk motoru: performans.risk_metrikleri "
+        "DOĞRU (günlüğe resample + mevduat %45 kıyas) ama UI'yi besleyen robot_motor._risk "
+        "YANLIŞ zaman tabanı (günde ~5 örneği günlük sayıp √252) → gösterilen Sortino güvenilmez. "
+        "(c) İki öz-puan: oz_puanlama (endeksi yenmeyi ölçer, sağlam) ama UI karne.skor'u "
+        "(taban+2 vanity metrik) gösteriyor."
+    ),
+    "2_yapisal_edge": (
+        "EN KRİTİK. Robot, backtest'te negatif Sharpe veren strateji ailesini sadakatle "
+        "uyguluyor. Robot temiz uygulayıcı — sorun ona NE trade ettirdiğimiz. Katman eklemek çözmez."
+    ),
+    "3_backtest_kirik": (
+        "backtest.py edge ölçemiyor: analiz_et'teki tazelik filtresi (bugün-son_tarih>10→None) "
+        "dilimlenmiş geçmişi öldürüyor + komisyon yok + mevduat eşiği yok. backtest_v2.py var ama "
+        "ana backtest.py kırık."
+    ),
+    "4_sessiz_bozulma": (
+        "İş Yatırım fallback'te O=H=L=Close → ATR/destek/direnç/Bollinger çöküyor, uyarı yok. "
+        "tarama_core'daki 'except: pass' katman çökmelerini yutuyor → sistem zannettiğinden zayıf "
+        "çalışıyor olabilir."
+    ),
+    "saglam_olan": (
+        "ai_model (F1 ile temiz, walk-forward + kalibrasyon, bilmediğinde NÖTR der), seffaflik.py "
+        "(aleyhte/belirsiz saklamaz), performans.risk_metrikleri (doğru), cuzdan.py + robot_motor "
+        "gerçekçi komisyon, güvenli yukle/kaydet, temiz modüler ayrım. İskelet iyi."
+    ),
+    "tek_cumle": (
+        "Darboğaz kod kalitesi değil: (a) stratejinin kanıtlanmış kenarı yok, (b) olan dürüst "
+        "sinyaller (ML, doğru risk metriği, oz_puanlama) karara bağlı değil."
+    ),
+}
+
+# ══════════════════════════════════════════════════════════════
+# SÜRÜM MUTABAKATI (baseline kurarken DİKKAT)
+# ══════════════════════════════════════════════════════════════
+# Elimizdeki repo ZIP'i birkaç dosyada eski. Baseline = repo ZIP + şu güncellemeler:
+SURUM_MUTABAKAT = [
+    "ui_app_template.html → 573 satırlık Pas-1+Pas-2 sürümü kullan (repo 572, eski).",
+    "ai_model.py → F1 düzeltmeli sürümü kullan (walk-forward sahte sıfır giderildi; repo eski).",
+    "ÇÖP TEMİZLE: boşluklu 'ai model.py', 'arayuz kartlar.py', 'bist kartlar.py' workflow/eski kart kalıntısı.",
+    "UYARI: Tek tek 'loose' dosya yüklemeleri isim-içerik karışık geliyor — TEK doğru kaynak repo ZIP'i.",
 ]
 
 # ══════════════════════════════════════════════════════════════
-# SON OTURUMDA NE YAPTIK (kronolojik — en yeni üstte)
+# SIRADAKİ ADIMLAR (öncelik sırasına göre)
 # ══════════════════════════════════════════════════════════════
-GECMIS_OTURUMLAR = [
-    "Piyasa Rejimi Freni (piyasa.py + robot.py): borsa düşüşte/fırtınalı ise robot savunmaya geçer (alım eşiği yükselir, pozisyon/slot küçülür). Risk-off modu.",
-    "Çoklu Zaman Dilimi Onayı (zaman.py): üst zaman dilimi (haftalık/aylık) sinyali teyit ediyor mu? Düşüşte sahte sıçrama tuzağını yakalar. Karara beslenir.",
-    "Risk-Düzeltilmiş Kalite (performans.py): Sharpe, Sortino, Max Drawdown — robot 'şanslı mıydı yoksa iyi mi', mevduatı yeniyor mu",
-    "Hacim Profili & VWAP (hacim.py): kurumsal seviyeler — POC (en güçlü destek), değer alanı (%70 hacim), VWAP konumu (alıcı/satıcı kontrolü). Güveni çarpmaz, yapısal bilgi.",
-    "Karakter & Strateji Motoru (karakter.py): Hurst üssü (trend/salınım karakteri) + relatif güç (lider/takipçi) + STRATEJİ UYUMU (sinyal karaktere uyuyor mu? tuzak tespiti). Katman 4 tohumu.",
-    "Volatilite Rejimi (volatilite.py): piyasa hava durumu (SAKİN/NORMAL/FIRTINA/SIKIŞMA), adaptif pozisyon+stop, strateji önerisi",
-    "KOD DENETİMİ: backtest/robot için hızlı mod eklendi (gereksiz grafik/alarm hesabı atlanır), df_grafik güvenli erişim",
-    "Karar Sentezleyici (karar.py): 5 sinyali tek AV SKORU + karara indirger (ŞİMDİ AL/İZLE/BEKLE/UZAK DUR) — emergent + sadeleştirici",
-    "Alarm Motoru (alarm.py): yaklaşan kritik olay + GERİ SAYIM (altın kesişime ~2 gün), kart titreşir/renk değiştirir",
-    "Tıklanır grafik (grafik.py): hisseye basınca grafik açılır, altın/ölüm kesişimi+destek/direnç işaretli, tek cümle yorum",
-    "Robot Karnesi (performans.py): öz-puanlama (A-F notu), günlük/haftalık/aylık/yıllık getiri, değer grafiği",
-    "Rüzgar Yönü (ruzgar.py): makro+sektör+hisse trend uyumu, kuyruk/karşı rüzgar, güvene etki",
-    "Katman 2 (Piyasa Dokusu): yığılma uyarısı + sektör rotasyon oku + korelasyon analizi (piyasa.py)",
-    "Yol haritası + durum panosu eklendi (proje kendi hafızasını taşıyor)",
-    "Öz-ölçüm motoru (gecmis.py) — sinyal kaydı, otomatik sonuç takibi, başarı oranı",
-    "Niyet Okuyucu + Güven Motoru — toplama/dağıtım/sürü/dip ayrımı, manipülasyon uyarısı",
-    "Robot — disiplinli/basit mod, dinamik rotasyon, cooldown kuralı",
-    "Sanal cüzdan, av panosu, izleme/alarm, backtest, ısı haritası",
-    "Çekirdek yeniden yazım: tek dosyadan 13 modüle, render sorunu çözüldü",
+SIRADAKI = [
+    "0) BASELINE: repo + yukarıdaki mutabakat → konsolide, hatasız v1.0 temel → GitHub'a yükle. "
+    "Bundan sonraki her şey bunun üstüne PARÇA PARÇA biner.",
+    "1) Pas-2 cüzdan dosyasını canlıya al (hazır): gerçek 8 pozisyon + portföy değeri görünsün.",
+    "2) DÜRÜST YOLU BAĞLA (teşhis #1): (a) av_skoru'na ai_model olasılığını dahil et / göstergeyi "
+    "ML ile barıştır; (b) UI'yi robot_motor._risk yerine performans.risk_metrikleri'ne bağla; "
+    "(c) karne.skor yerine oz_puanlama'yı göster.",
+    "3) BACKTEST'İ ONAR (teşhis #3): analiz_et'e backtest=True (tazelik bypass) + komisyon + "
+    "mevduat eşiği → edge'i DÜRÜSTÇE ölçebil. Sonra stratejiyi bu dürüst ölçüye göre yargıla.",
+    "4) SESSİZ BOZULMAYI GÖRÜNÜR YAP (teşhis #4): veri-kaynağı/kalite etiketi + katman çökme logu.",
+    "5) SUPABASE kalıcılığı: sinyal + robot işlemleri kalıcı kaydedilsin → gerçek doğrulanabilir sicil.",
+    "6) Sicil birikince (Katman 1 öz-kalibrasyon): edge yoksa stratejiyi değiştir — "
+    "reverse-engineering (ör. Tera Yatırım giriş/çıkış şablonu) veya temel/makro özellik katmanı. "
+    "Şu an sistem %100 teknik/fiyat-türevli; 15dk gecikmeli günlük veride en kalabalık, en düşük-edge alan.",
 ]
-
-# ══════════════════════════════════════════════════════════════
-# DEPLOY ADIMLARI (eve gidince)
-# ══════════════════════════════════════════════════════════════
-DEPLOY_ADIMLARI = [
-    "1. GitHub repo: ysfyprk3438-debug/bist-tarama (branch: main)",
-    "2. requirements.txt'i güncelle (eski içeriği sil, yenisini yapıştır)",
-    "3. app.py'yi güncelle (eski içeriği tamamen sil, yenisini yapıştır)",
-    "4. 9 yeni .py dosyasını tek tek ekle (Create new file)",
-    "5. Streamlit Cloud otomatik deploy etsin, bekle",
-    "6. İlk taramayı yap — veri kaynağı çalışıyor mu kontrol et",
-    "7. Tarama raporu sekmesinde 'veri gelmeyen hisseler' azsa → başarı",
-    "8. Sorun çıkarsa veri.py'deki veri_al() ayarını birlikte düzeltiriz",
-]
-
-# ══════════════════════════════════════════════════════════════
-# SIRADAKİ HEDEF (deploy sonrası)
-# ══════════════════════════════════════════════════════════════
-SONRAKI_HEDEF = (
-    "Deploy başarılı olunca → Katman 1: Kendini Kalibre Eden Sistem. "
-    "Sistem birkaç hafta gerçek sinyal biriktirsin, sonra öz-ölçüme göre "
-    "kendi ağırlıklarını otomatik ayarlamaya başlasın. Detay: yol_haritasi.py"
-)
 
 
 def durum_metni():
-    s = ["📍 BIST PARA AVCISI — DURUM", "=" * 45]
-    s.append(f"\nSÜRÜM: {SURUM} — {SON_GUNCELLEME}")
+    s = ["📍 APEX — DURUM", "=" * 50, f"\nSÜRÜM: {SURUM}", f"GÜNCELLEME: {SON_GUNCELLEME}"]
     s.append(f"\nŞU AN: {SU_AN['asama']}")
-    s.append(f"SIRADAKİ: {SU_AN['siradaki_adim']}")
-    s.append(f"\nDEPLOY ADIMLARI:")
-    for a in DEPLOY_ADIMLARI:
+    s.append("\nTEŞHİS (kısa):\n  " + TESHIS["tek_cumle"])
+    s.append("\nSIRADAKİ:")
+    for a in SIRADAKI:
         s.append(f"  {a}")
-    s.append(f"\nSONRAKİ HEDEF:\n  {SONRAKI_HEDEF}")
     return "\n".join(s)
 
 
