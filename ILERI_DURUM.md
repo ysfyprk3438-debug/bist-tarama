@@ -1,6 +1,6 @@
 # APEX — İleri Durum (Rejim Pusulası + Kağıt-Test)
 
-_Son güncelleme: 2026-06-27 23:13 · veri tarihi 2026-06-26_
+_Son güncelleme: 2026-06-27 23:25 · veri tarihi 2026-06-26_
 
 ## Bugünün duruşu
 
@@ -11,6 +11,22 @@ _Son güncelleme: 2026-06-27 23:13 · veri tarihi 2026-06-26_
 > Bu bir **duruş göstergesidir, kâhin değil.** Plasebo testi, reel-faiz rejiminin zamanlama becerisini şanstan ayıramadı — yani bu duruşu 'kanıtlanmış edge' değil, 'rejim-farkında temkin' olarak oku. Aşağıdaki ileri karne, zamanla gerçeği söyleyecek tek şeydir.
 
 _Makro kaynak: OECD oto-besleme: **bağlı ama beklemede** → OECD son verisi 2025Ç4, statik tablo daha güncel (2026Ç2). Statik kullanılıyor._
+
+## Önerilen pozisyon (risk-ölçekli)
+
+XU100 yıllık oynaklık (60g): **%29**
+
+### → %1.0 hisse · %99.0 mevduat
+_(saf vol-hedef %2.1 × rejim tilt 0.5 · DD bütçesi %1.5)_
+
+| DD bütçesi | İmâ edilen hisse % (saf vol-hedef) |
+|---|---:|
+| %1.5 | %2.1 |
+| %5.0 | %7.0 |
+| %10.0 | %14.0 |
+| %20.0 | %28.0 |
+
+> **Vol-hedefleme risk yönetimidir, getiri tahmini DEĞİL.** Pozisyonu oynaklığa göre ölçekler, 'ya hep ya hiç'i önler. DD→vol dönüşümü kaba kuraldır (k=2.5), garanti değil. Tablo acı gerçeği gösterir: dar DD bütçesi = küçük hisse maruziyeti. Bütçeyi gevşetmek daha çok hisse demek — ama daha çok da düşüş riski.
 
 ## İleri karne — 1 gündür biriken GERÇEK OOS
 
