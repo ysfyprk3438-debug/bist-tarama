@@ -1,6 +1,6 @@
 # APEX — İleri Durum (Rejim Pusulası + Kağıt-Test)
 
-_Son güncelleme: 2026-06-27 22:38 · veri tarihi 2026-06-25_
+_Son güncelleme: 2026-06-27 23:05 · veri tarihi 2026-06-25_
 
 ## Bugünün duruşu
 
@@ -9,6 +9,8 @@ _Son güncelleme: 2026-06-27 22:38 · veri tarihi 2026-06-25_
 ### → MEVDUAT LEHİNE
 
 > Bu bir **duruş göstergesidir, kâhin değil.** Plasebo testi, reel-faiz rejiminin zamanlama becerisini şanstan ayıramadı — yani bu duruşu 'kanıtlanmış edge' değil, 'rejim-farkında temkin' olarak oku. Aşağıdaki ileri karne, zamanla gerçeği söyleyecek tek şeydir.
+
+_Makro kaynak: OECD oto-besleme: **bağlı ama beklemede** → OECD son verisi 2025Ç4, statik tablo daha güncel (2026Ç2). Statik kullanılıyor._
 
 ## İleri karne
 
