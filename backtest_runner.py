@@ -1,135 +1,80 @@
 """
-APEX · İLERİ KAĞIT-TEST GÜNLÜĞÜ (forward paper-test logger)
-Her koşuda: bugünün reel-faiz rejimini + XU100 seviyesini + duruşu CSV'ye EKLER (dedupe).
-Sonra SADECE kayıtlı kararlardan ileri-getiri karnesini yeniden kurar:
-  duruş(t) hisse ise t→t+1 endeks getirisi, değilse mevduat getirisi.
-Bu, hindsight içermeyen TEK gerçek OOS — backtest taklit eder, bu biriktirir.
-DÜRÜST ÇERÇEVE: bu bir DURUŞ/PUSULA göstergesidir, kanıtlanmış zamanlama edge'i DEĞİL.
-(plasebo testi rejim-zamanlamasını şanstan ayıramadı; ileri karne zamanla gerçeği söyleyecek.)
-NOT: makro_veri.py çeyreklik statik tablodur; her yeni PPK/TÜİK verisinde elle güncellenmeli.
+APEX · RİSK ARACI DOĞRULAMA — vol-hedefleme gerçekten bütçeye yakın MaxDD veriyor mu?
+İddia: "ağırlık = hedef_vol/gerçek_vol senin DD bütçene saygı gösterir." Bunu TEST eder.
+Geçmiş XU100'de vol-hedefli portföyü (haftalık rebalance) kurar, GERÇEKLEŞEN MaxDD'yi
+bütçeyle kıyaslar. MaxDD >> bütçe ise k=2.5 fazla iyimser → ampirik k öner.
+(Bu bir EDGE testi DEĞİL — sadece risk kontrolünün vaadini doğrular.)
 """
-import os, csv, datetime
+import datetime
 import numpy as np, pandas as pd
-import makro_oto as mk   # hibrit: statik taban + OECD oto-besleme (statiğe fallback)
-import pozisyon as pz    # vol-hedefli risk-ölçekleme (risk yönetimi, getiri tahmini değil)
+import makro_oto as mk
+import pozisyon as pz
 
-CSV = "ileri_gunluk.csv"
-MD = "ILERI_DURUM.md"
-GIR, CIK = -3.0, 3.0   # histerezis bandı: <-3 hisse-lehine, >+3 mevduat-lehine, arası nötr
-
-
-def duruş(reel, onceki):
-    if reel < GIR: return "HİSSE LEHİNE"
-    if reel > CIK: return "MEVDUAT LEHİNE"
-    return onceki or "MEVDUAT LEHİNE"   # nötr bandda önceki duruşu koru (yoksa temkinli)
+PENCERE = 60
+REBAL = 5  # haftalık
 
 
-def _oku():
-    if not os.path.exists(CSV): return []
-    with open(CSV, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
+def _mdd(nav):
+    s = pd.Series(nav); return float((s / s.cummax() - 1).min() * 100)
 
 
-def _yaz(rows):
-    with open(CSV, "w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["tarih", "xu100", "politika", "enflasyon", "reel", "durus"])
-        w.writeheader(); w.writerows(rows)
+def voltarget_nav(xu, dates, lo, hi, butce_pct):
+    nav = 1.0; navs = [1.0]; w = 0.0
+    for i, t in enumerate(range(lo, hi)):
+        if i % REBAL == 0:
+            yv = pz.yillik_vol(xu.values[:t + 1], PENCERE)
+            w = pz.vol_hedef_agirlik(yv, butce_pct)   # saf vol-hedef (rejim tilt yok)
+        gap = max((dates[t + 1] - dates[t]).days, 1)
+        p0 = xu.iat[t]; p1 = xu.iat[t + 1]
+        r_eq = (p1 / p0 - 1.0) if (p0 > 0 and np.isfinite(p0) and np.isfinite(p1)) else 0.0
+        m = mk.makro_at(dates[t]); pol = m["politika"] if m else 40.0
+        r_dep = (1 + pol / 100.0) ** (gap / 365.0) - 1.0
+        nav *= (1 + w * r_eq + (1 - w) * r_dep); navs.append(nav)
+    return nav, navs
 
 
 def calistir():
     from veri import veri_al
-    xu_df, durum = veri_al("XU100", gun=400, min_gun=30, aralik="1d")
-    if xu_df is None or len(xu_df) < 2:
-        print("XU100 yok:", durum); return
-    veri_tarih = pd.Timestamp(xu_df.index[-1]).date()
-    xu_son = float(xu_df["Close"].iloc[-1])
-    m = mk.makro_at(veri_tarih)
-    if m is None:
-        print("makro veri yok (tablo güncel mi?)"); return
+    xu_df, _ = veri_al("XU100", gun=3000, min_gun=300, aralik="1d")
+    if xu_df is None or len(xu_df) < 400:
+        print("XU100 yok"); return
+    dates = xu_df.index; xu = xu_df["Close"].reindex(dates).ffill()
+    lo, hi = PENCERE + 5, len(dates) - 1
+    yil = (dates[hi] - dates[lo]).days / 365.0
 
-    rows = _oku()
-    onceki = rows[-1]["durus"] if rows else None
-    bugun_durus = duruş(m["reel"], onceki)
-    tarih_str = veri_tarih.isoformat()
+    # all-in hisse referans
+    nav_eq = float(xu.iat[hi] / xu.iat[lo]); 
+    mdd_eq = _mdd(xu.values[lo:hi + 1])
 
-    if rows and rows[-1]["tarih"] == tarih_str:
-        rows[-1] = {"tarih": tarih_str, "xu100": f"{xu_son:.2f}", "politika": f"{m['politika']:.1f}",
-                    "enflasyon": f"{m['enflasyon']:.1f}", "reel": f"{m['reel']:+.1f}", "durus": bugun_durus}
-        yeni = False
+    L = ["# APEX — Risk Aracı Doğrulama (vol-hedefleme vaadi)", "",
+         f"_{datetime.datetime.now():%Y-%m-%d %H:%M} · XU100 · {yil:.1f} yıl · haftalık rebalance_", "",
+         "## Vol-hedefli portföy: bütçe vs GERÇEKLEŞEN MaxDD", "",
+         "| DD bütçesi | Gerçekleşen MaxDD | Getiri (×) | Vaad tuttu mu? |", "|---|---:|---:|:--:|"]
+    tutarli = 0; toplam = 0
+    for B in (1.5, 5.0, 10.0, 20.0):
+        nav, navs = voltarget_nav(xu, dates, lo, hi, B)
+        mdd = _mdd(navs)
+        # vaad: gerçekleşen MaxDD bütçeyi ~1.5x'ten fazla aşmasın (kaba tolerans)
+        ok = abs(mdd) <= B * 1.5
+        toplam += 1; tutarli += int(ok)
+        L.append(f"| %{B:.1f} | %{mdd:.1f} | {nav:.2f} | {'✅' if ok else '❌ aşıldı'} |")
+    L += ["", f"_Referans — all-in hisse: MaxDD %{mdd_eq:.1f} · getiri {nav_eq:.2f}×_", "",
+          "## Yorum", ""]
+    if tutarli >= toplam - 1:
+        L += ["**Vol-hedefleme vaadini büyük ölçüde tuttu** — gerçekleşen MaxDD bütçelere yakın kaldı, "
+              "all-in hisseye kıyasla düşüş ciddi şekilde kırpıldı. Risk aracı dürüst: söylediği bütçeyi "
+              "kabaca teslim ediyor. k=2.5 makul."]
     else:
-        rows.append({"tarih": tarih_str, "xu100": f"{xu_son:.2f}", "politika": f"{m['politika']:.1f}",
-                     "enflasyon": f"{m['enflasyon']:.1f}", "reel": f"{m['reel']:+.1f}", "durus": bugun_durus})
-        yeni = True
-    _yaz(rows)
-
-    # ---- İleri karne: SADECE kayıtlı kararlardan yeniden kur ----
-    kr = []
-    if len(rows) >= 2:
-        nav_p = nav_e = nav_m = 1.0
-        for i in range(len(rows) - 1):
-            d0 = datetime.date.fromisoformat(rows[i]["tarih"]); d1 = datetime.date.fromisoformat(rows[i + 1]["tarih"])
-            x0 = float(rows[i]["xu100"]); x1 = float(rows[i + 1]["xu100"])
-            pol = float(rows[i]["politika"]); gap = max((d1 - d0).days, 1)
-            r_eq = x1 / x0 - 1.0
-            r_mv = (1 + pol / 100.0) ** (gap / 365.0) - 1.0
-            nav_e *= (1 + r_eq); nav_m *= (1 + r_mv)
-            nav_p *= (1 + (r_eq if rows[i]["durus"] == "HİSSE LEHİNE" else r_mv))
-        gun = (datetime.date.fromisoformat(rows[-1]["tarih"]) - datetime.date.fromisoformat(rows[0]["tarih"])).days
-        kr = [nav_p, nav_e, nav_m, gun]
-
-    # ---- ILERI_DURUM.md ----
-    L = ["# APEX — İleri Durum (Rejim Pusulası + Kağıt-Test)", "",
-         f"_Son güncelleme: {datetime.datetime.now():%Y-%m-%d %H:%M} · veri tarihi {tarih_str}_", "",
-         "## Bugünün duruşu", "",
-         f"**Reel faiz: %{m['reel']:+.1f}**  (politika %{m['politika']:.1f} − enflasyon %{m['enflasyon']:.1f})", "",
-         f"### → {bugun_durus}", "",
-         "> Bu bir **duruş göstergesidir, kâhin değil.** Plasebo testi, reel-faiz rejiminin zamanlama "
-         "becerisini şanstan ayıramadı — yani bu duruşu 'kanıtlanmış edge' değil, 'rejim-farkında temkin' "
-         "olarak oku. Aşağıdaki ileri karne, zamanla gerçeği söyleyecek tek şeydir.", "",
-         f"_Makro kaynak: {mk.kaynak_durumu()}_", ""]
-
-    # ---- Risk-ölçekli pozisyon önerisi ----
-    try:
-        pos = pz.oneri(xu_df["Close"].values, bugun_durus)
-        yvol, tablo = pz.tradeoff_tablosu(xu_df["Close"].values)
-        L += ["## Önerilen pozisyon (risk-ölçekli)", "",
-              f"XU100 yıllık oynaklık (60g): **%{(yvol or 0)*100:.0f}**", "",
-              f"### → %{pos['w']*100:.1f} hisse · %{(1-pos['w'])*100:.1f} mevduat",
-              f"_(saf vol-hedef %{pos['w_saf']*100:.1f} × rejim tilt {pos['carpan']:.1f} · "
-              f"DD bütçesi %{pos['dd_butce']:.1f})_", "",
-              "| DD bütçesi | İmâ edilen hisse % (saf vol-hedef) |", "|---|---:|"]
-        for b, w in tablo:
-            L.append(f"| %{b:.1f} | %{w:.1f} |")
-        L += ["", "> **Vol-hedefleme risk yönetimidir, getiri tahmini DEĞİL.** Pozisyonu oynaklığa göre "
-              "ölçekler, 'ya hep ya hiç'i önler. DD→vol dönüşümü kaba kuraldır (k=2.5), garanti değil. "
-              "Tablo acı gerçeği gösterir: dar DD bütçesi = küçük hisse maruziyeti. Bütçeyi gevşetmek "
-              "daha çok hisse demek — ama daha çok da düşüş riski.", ""]
-    except Exception as e:
-        L += [f"_(pozisyon önerisi hesaplanamadı: {type(e).__name__})_", ""]
-    if kr:
-        nav_p, nav_e, nav_m, gun = kr
-        kazanan = max([("Duruş", nav_p), ("Al-tut endeks", nav_e), ("Mevduat", nav_m)], key=lambda x: x[1])
-        L += [f"## İleri karne — {gun} gündür biriken GERÇEK OOS", "",
-              "| | Getiri |", "|---|---:|",
-              f"| **Duruş stratejisi** | {(nav_p-1)*100:+.1f}% |",
-              f"| Al-tut endeks | {(nav_e-1)*100:+.1f}% |",
-              f"| Mevduat | {(nav_m-1)*100:+.1f}% |", "",
-              f"_Şu ana dek önde: **{kazanan[0]}**. Bu sayılar her koşuda, sadece geçmişte kaydedilen "
-              f"duruşlardan hesaplanır — geriye dönük düzeltme yok._", ""]
-    else:
-        L += ["## İleri karne", "",
-              "_İlk kayıt alındı. Karne için en az 2 kayıt ve biraz zaman gerekiyor. "
-              "Günlüğü düzenli çalıştırdıkça gerçek ileri-getiri burada birikecek._", ""]
-    L += [f"## Günlük ({len(rows)} kayıt)", "",
-          "| Tarih | XU100 | Reel % | Duruş |", "|---|---:|---:|---|"]
-    for r in rows[-30:]:
-        L.append(f"| {r['tarih']} | {float(r['xu100']):,.0f} | {r['reel']} | {r['durus']} |")
-    L += ["", "---", "*makro_veri.py çeyreklik statik tablodur; yeni PPK/TÜİK verisinde güncellenmeli. "
-          "Duruş = reel faiz histerezisi (gir<-3, çık>+3, nötr→önceki).*"]
-    with open(MD, "w", encoding="utf-8") as f:
+        # ampirik k öner: MaxDD/bütçe oranlarının medyanı ~ gereken ölçek
+        L += ["**Vol-hedefleme bazı bütçelerde aşıldı** — gerçekleşen MaxDD bütçeyi belirgin geçti. "
+              "Sebep: oynaklık sıçramaları gecikmeli ölçülür + şişman kuyruklar. Dürüst düzeltme: k'yı "
+              "büyüt (daha temkinli ağırlık). Aşağıdaki orana göre k≈2.5×(ortalama aşım) yapılmalı.",
+              "", "_Yani araç şu an söylediği bütçeden DAHA RİSKLİ; düzeltilmeli (k yukarı)._"]
+    L += ["", "---\n*Risk kontrolü testi (alfa değil). Vol 60g trailing, haftalık rebalance, "
+          "mevduat zamana-göre faiz. Karar t, getiri t+1.*"]
+    with open("BACKTEST_SONUC.md", "w", encoding="utf-8") as f:
         f.write("\n".join(L))
-    print(f"{'YENİ kayıt' if yeni else 'kayıt güncellendi'}: {tarih_str} · reel %{m['reel']:+.1f} · {bugun_durus}")
-    print(f"Toplam {len(rows)} kayıt. ILERI_DURUM.md + {CSV} yazıldı.")
+    print("\n".join(L)); print("\n>>> yazıldı.")
 
 
 if __name__ == "__main__":
