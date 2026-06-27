@@ -20,6 +20,9 @@ jobs:
           pip install numpy pandas scikit-learn requests
       - name: APEX çalıştır
         run: python backtest_runner.py
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       - name: Sonucu commit et
         run: |
           git config user.name "APEX Backtest"
