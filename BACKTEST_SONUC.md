@@ -1,23 +1,31 @@
-# APEX — Rejim Tahsisi Audit · Hisse mi Mevduat mı, Ne Zaman?
+# APEX — Momentum Stres Testi (OOS + parametre + beceri)
 
-_Üretim: 2026-06-27 19:44 · 94 hisse · 7.4 yıl · maliyet: komisyon+slippage · mevduat takvim-doğru · leakage yok_
+_2026-06-27 19:52 · 94 hisse · 7.2 yıl_
 
-## Soru: Rejim anahtarı HEM mevduatı HEM endeksi geçiyor mu?
+## 1) Out-of-Sample — momentum SON yarıda da kazanıyor mu?
 
-| Strateji | Son NAV (×) | Getiri% | Yıllık% | Sharpe | MaxDD% | Mevduatı geçti? | Endeksi geçti? |
-|---|---:|---:|---:|---:|---:|:--:|:--:|
-| Rejim Anahtarı (MA200) | 9.90 | 890.4 | 36.5 | 0.36 | -22.3 | ❌ | ❌ |
-| Momentum (top-N) | 32.83 | 3183.5 | 60.6 | 0.83 | -49.8 | ✅ | ✅ |
-| Hibrit Sinyal (top-N) | 16.55 | 1554.7 | 46.3 | 0.61 | -32.4 | ✅ | ✅ |
-| _XU100 al-tut_ | 13.94 | 1294.5 | 43.0 | 0.53 | -31.8 | ❌ | — |
-| _Eşit-ağırlık TÜM_ | 25.30 | 2429.7 | 55.0 | — | — | ✅ | ✅ |
-| _Mevduat (~%45)_ | 15.46 | 1446.2 | 45.0 | — | — | — | ✅ |
+| Dönem | Momentum | Eşit-ağırlık | Mevduat | Endeks | Mom>hepsi? |
+|---|---:|---:|---:|---:|:--:|
+| İlk yarı (IS) | 18.92 | 12.51 | 3.79 | 5.10 | ✅ |
+| İkinci yarı (OOS) | 2.23 | 2.76 | 3.79 | 2.92 | ❌ |
+| TÜM dönem | 36.96 | 26.12 | 14.37 | 14.98 | ✅ |
+
+## 2) Parametre taraması — 126/12 şanslı mı? (TÜM dönem, çita: mevduat & endeks)
+
+| lookback \ N | N=8 | N=12 | N=16 |
+|---|---:|---:|---:|
+| 63 | 20.9 (✅) | 24.2 (✅) | 26.6 (✅) |
+| 126 | 26.2 (✅) | 37.0 (✅) | 30.5 (✅) |
+| 189 | 23.5 (✅) | 23.1 (✅) | 26.6 (✅) |
+| 252 | 28.9 (✅) | 30.4 (✅) | 34.5 (✅) |
+
+_Çıta: mevduat 14.4× · endeks 15.0×. ✅ = ikisini de geçti._
 
 ## Karar
 
-**Rejim anahtarı mevduatı bile geçemedi** (NAV 9.90 < mevduat 15.46). Bu basit MA kuralı edge üretmiyor. Ama tabloda asıl mesaj: bu dönemde sabit mevduat çoğu şeyi yeniyorsa, dürüst ürün 'çoğunlukla mevduat, seçili fırsatta hisse' olabilir — ya da farklı rejim sinyali (faiz yönü, enflasyon, breadth) gerekiyor.
+**Parametre-sağlam ama OOS zayıf.** Çoğu ayar tüm dönemde kazanıyor fakat ikinci yarıda (yüksek-faiz) momentum hepsini geçemiyor — edge boom-dönemine yaslı. Bugünkü rejimde dikkatli ol; kısmi tahsis şart.
 
-> Rejim: 59 geçiş · %83 hissede. MA200 penceresi. Geçişte tek-yön sürtünme.
+> Uyarı: survivorship (bugün yaşayan 94 hisse) momentum'u olumlu yanlı gösterir. Kesin yargı için delist olmuş hisseler de gerek.
 
 ---
-*Mevduat takvim-günü doğru bileşik (hafta sonu dahil). Skor/karar t kapanışında, getiri t+1 — leakage yok.*
+*Maliyet komisyon+slippage. Skor t, getiri t+1 — leakage yok. Mevduat takvim-doğru.*
