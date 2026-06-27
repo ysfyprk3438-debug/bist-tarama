@@ -1,19 +1,27 @@
-# APEX — Makro Kaynak Sondası
+# APEX — OECD Ayıklama Sondası
 
-_2026-06-27 22:49 · otomatik güncelleme için kaynak araması_
+_2026-06-27 22:56 · sayıyı çıkarabiliyor muyuz?_
 
-## 1-2) Dünya Bankası (keysiz, US-OK, ama yıllık+gecikmeli)
+## Enflasyon (TR aylık YoY TÜFE) — ASIL TEST
 
-- ❌ FP.CPI.TOTL.ZG: durum=None · HATA: TimeoutError: The read operation timed out
-- ❌ FR.INR.RINR: durum=None · HATA: TimeoutError: The read operation timed out
+Durum 200 · JSON ✅ · ayıklama **çalıştı**:
 
-## 3-4) OECD SDMX (keysiz, aylık olabilir)
+| Dönem | YoY % |
+|---|---:|
+| 2025-09 | 33.3 |
+| 2025-10 | 32.9 |
+| 2025-11 | 31.1 |
+| 2025-12 | 30.9 |
 
-- ✅ TR aylık TÜFE: durum=200 · CT=application/vnd.sdmx.data+json; version=2; charset=utf-8 · gövde: «{"meta":{"schema":"https://raw.githubusercontent.com/sdmx-twg/sdmx-json/master/data-messag»
-- ❌ TR kısa-vade faiz: HATA: HTTPError: HTTP Error 422: Unprocessable Entity
+**Son: 2025-12 → %30.9** · ✅ makul aralıkta (gerçek YoY enflasyon, doğru seri)
 
-## Yorum
+## Faiz (TR kısa-vade) — ikincil, düzeltilmiş denemeler
 
-- Dünya Bankası ✅ ama YILLIK → çeyreklik rejim için fazla kaba/gecikmeli (tek başına yetmez).
-- OECD ✅ + JSON ise → aylık TÜFE & faiz otomasyonun çekirdeği olabilir.
-- Hepsi ❌/⚠️ ise → güvenilir US-kaynak yok; otomasyon yerine **10 saniyelik güvenli elle-ekle + tazelik hatırlatıcısı** doğru tasarım (sessiz-hata riski yok).
+- ✅ STES IR3TIB: ayıklandı → 2026-03 = %35.5
+- ❌ MEI STINT: durum=None
+
+## Sonuç
+
+- Enflasyon ayıklaması ✅ + makul ise → otomasyonu logger'a bağlarız (enflasyon-oto + faiz-manuel hibrit).
+- Faiz denemelerinden biri ✅ ise bonus: onu da otomatiğe alırız.
+- Enflasyon ayıklaması bozuksa → format değişti, statik tablo + 10sn elle-ekle kalır (sistem zaten çalışıyor).
