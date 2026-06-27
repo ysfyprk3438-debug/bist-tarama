@@ -1,0 +1,10 @@
+{
+  "version": "test-1",
+  "write": [
+    {
+      "path": "CALISTI.md",
+      "b64": "IyBCb3J1IGhhdHRpIENBTElTVEkg4pyFCgpCdSBkb3N5YSwgeXVrbGVkaWdpbiB0ZWsgYnVuZGxlLmpzb24nZGFuIG90b21hdGlrIG9sdXN0dS4KU2lzdGVtIGNhbGlzaXlvcjogc2VuIDEgZG9zeWEgeXVrbHV5b3JzdW4sIHJvYm90IGdlcmNlayBkb3N5YWxhcmkgeWF6aXlvci4K"
+    }
+  ],
+  "delete": []
+}
