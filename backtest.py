@@ -25,7 +25,7 @@ def backtest_calistir(df, vade_ayar, analiz_fonk, sektor="Test", baslangic_gun=1
 
     df: tam OHLCV verisi
     analiz_fonk: analiz.analiz_et fonksiyonu
-    Dönen: backtest özeti
+    Dönen: backtest özeti (+ fazla_list = işlem başına mevduat-üstü getiri listesi)
     """
     if df is None or len(df) < baslangic_gun + 20:
         return None
@@ -80,7 +80,7 @@ def backtest_calistir(df, vade_ayar, analiz_fonk, sektor="Test", baslangic_gun=1
         i += max(gun_sayisi, 1)
 
     if not islemler:
-        return {"islem_sayisi": 0}
+        return {"islem_sayisi": 0, "fazla_list": []}
 
     getiriler = [x["getiri_pct"] for x in islemler]
     kazanan = [x for x in islemler if x["getiri_pct"] > 0]
@@ -105,13 +105,19 @@ def backtest_calistir(df, vade_ayar, analiz_fonk, sektor="Test", baslangic_gun=1
     fazla_sharpe = (ort_fazla / std_fazla) if std_fazla > 0 else 0.0
 
     toplam_gun = sum(max(x["gun"], 1) for x in islemler)
-    # Piyasada-iken yıllıklandırılmış (boş/nakit zamanı HARİÇ — iyimser tavan)
+    # Piyasada-iken yıllıklandırılmış (boş/nakit zamanı HARİÇ — ŞİŞİK, iyimser tavan)
+    # DİKKAT: Bu sayı KARARDA KULLANILMAZ. Nakit/boş zamanı saymadığı için
+    # gerçeği abartır. Yalnızca referans/tablo amaçlıdır.
     if toplam_gun > 0 and bilesik > 0:
         strateji_yillik = ((bilesik) ** (365.0 / toplam_gun) - 1) * 100
     else:
         strateji_yillik = -100.0
     mevduat_yillik_pct = MEVDUAT_YILLIK * 100
-    mevduati_yeniyor = (ort_fazla > 0) and (strateji_yillik > mevduat_yillik_pct)
+
+    # Sembol bazında basit işaret: ort. mevduat-üstü > 0.
+    # ZAYIFTIR (tek sembolde işlem sayısı düşük). Asıl GÜVENİLİR karar
+    # runner'da TÜM işlemler havuzlanıp t-istatistiği ile verilir.
+    mevduati_yeniyor = (ort_fazla > 0)
 
     return {
         "islem_sayisi": len(islemler),
@@ -129,9 +135,10 @@ def backtest_calistir(df, vade_ayar, analiz_fonk, sektor="Test", baslangic_gun=1
         # mevduat kıyası
         "ort_mevduat_ustu": ort_fazla,
         "mevduat_ustu_sharpe": fazla_sharpe,
-        "strateji_yillik": strateji_yillik,
+        "strateji_yillik": strateji_yillik,          # referans — KARAR DIŞI
         "mevduat_yillik": mevduat_yillik_pct,
-        "mevduati_yeniyor": mevduati_yeniyor,
+        "mevduati_yeniyor": mevduati_yeniyor,        # sembol-bazlı zayıf işaret
+        "fazla_list": fazlalar,                      # HAVUZ t-istatistiği için ham veri
     }
 
 
