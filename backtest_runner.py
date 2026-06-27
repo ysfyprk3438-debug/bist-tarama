@@ -1,26 +1,30 @@
 """
 ═══════════════════════════════════════════════════════════════
-APEX · DÜRÜST BACKTEST KOŞUCUSU  (v4 — audit + al-tut çıtası)
+APEX · DÜRÜST BACKTEST KOŞUCUSU  (v5 — ÇOK VADELİ karşılaştırma)
 ═══════════════════════════════════════════════════════════════
-İki çıtaya birden bakar:
-  ÇITA 1 (mevduat): işlem başına mevduat-üstü getiri, havuz t-istatistiği.
-  ÇITA 2 (al-tut) : strateji (fund NAV, nakit dahil) vs hisse al-tut vs
-                    ENDEKS (XU100) al-tut. Asıl rakip "BIST-100 al ve tut".
+Vizyon: sistem her fırsatı en uygun vadede değerlendirsin (gün içi /
+günlük / haftalık). İLK ADIM: üç vadeyi de AYRI ÖLÇ, hangisinde
+al-tut'u/mevduatı yenen bir edge var gör. Para ayırmadan önce kanıt.
 
-Maliyet artık gerçekçi: komisyon + slippage + stop ekstra kayma (backtest.py v4).
+Her vade kendi penceresinde, kendi al-tut'una karşı kıyaslanır.
+Maliyet gerçekçi (komisyon+slippage+stop kayma). Walk-forward, leakage yok.
+
+UYARILAR:
+ - Gün içi (15dk): veri ~son 60 günle sınırlı (Yahoo). Kısa rejim penceresi.
+ - Gün içi 15dk GECİKMEYİ modellemez → canlı için İYİMSER. Edge görünürse
+   sonraki adım: 1-bar geç giriş ekleyip yeniden ölç.
 """
 
 import datetime
 import traceback
 import numpy as np
 
-STRATEJI     = "hibrit"     # "hibrit" | "teknik"
-VADE_KEY     = "haftalik"
-FETCH_GUN    = 1500
-BASLANGIC    = 120
+STRATEJI    = "hibrit"
+VADE_LISTE  = ["gun_ici", "gunluk", "haftalik"]
+BASLANGIC   = 120
 HISSE_SAYISI = 0
-T_ESIK       = 2.0
-N_MIN        = 100
+T_ESIK      = 2.0
+N_MIN       = 100
 
 
 def _fmt(x, n=2):
@@ -28,6 +32,61 @@ def _fmt(x, n=2):
         return f"{x:.{n}f}"
     except Exception:
         return str(x)
+
+
+def _fetch_gun(ayar):
+    # 15dk veri Yahoo'da ~60 günle sınırlı; günlük vadelerde uzun geçmiş
+    return 59 if ayar.get("aralik") == "15m" else 1500
+
+
+def _vade_calistir(vkey, motor, veri_al, VADE_AYAR, backtest_calistir, KOD_SEKTOR, BIST_TUM):
+    from backtest import _FR
+    ayar = VADE_AYAR[vkey]
+    fg = _fetch_gun(ayar)
+    kodlar = BIST_TUM if HISSE_SAYISI <= 0 else BIST_TUM[:HISSE_SAYISI]
+
+    endeks_df = None
+    try:
+        endeks_df, _ = veri_al("XU100", gun=fg, min_gun=ayar["min_gun"], aralik=ayar["aralik"])
+    except Exception:
+        pass
+    endeks_altut = None
+    if endeks_df is not None and len(endeks_df) > BASLANGIC + 10:
+        b = float(endeks_df["Close"].iloc[BASLANGIC]); s = float(endeks_df["Close"].iloc[-5])
+        if b > 0:
+            endeks_altut = ((s * (1 - _FR) - b * (1 + _FR)) / (b * (1 + _FR))) * 100
+
+    havuz = []; s_win = []; b_win = []
+    test_edilen = altut_yenen = 0
+    for idx, kod in enumerate(kodlar, 1):
+        try:
+            df, _ = veri_al(kod, gun=fg, min_gun=ayar["min_gun"], aralik=ayar["aralik"])
+            if df is None or len(df) < BASLANGIC + 25:
+                continue
+            r = backtest_calistir(df, ayar, motor, KOD_SEKTOR.get(kod, "Diğer"),
+                                  baslangic_gun=BASLANGIC, endeks_df=endeks_df)
+            if not r or r.get("islem_sayisi", 0) == 0:
+                continue
+            test_edilen += 1
+            havuz.extend(r.get("fazla_list", []))
+            s_win.append(r["strateji_window"]); b_win.append(r["buyhold_window"])
+            if r.get("altut_yeniyor"):
+                altut_yenen += 1
+        except Exception as e:
+            print(f"  {vkey}/{kod}: HATA {e}")
+
+    X = np.asarray(havuz, dtype=float)
+    N = int(X.size)
+    mu = float(np.mean(X)) if N else 0.0
+    sd = float(np.std(X, ddof=1)) if N > 1 else 0.0
+    t = (mu / (sd / np.sqrt(N))) if (N > 1 and sd > 0) else 0.0
+    return {
+        "vade": vkey, "ad": ayar["ad"], "aralik": ayar.get("aralik"),
+        "N": N, "mu": mu, "t": t, "test_edilen": test_edilen,
+        "strateji_win": float(np.mean(s_win)) if s_win else 0.0,
+        "buyhold_win": float(np.mean(b_win)) if b_win else 0.0,
+        "endeks_altut": endeks_altut, "altut_yenen": altut_yenen,
+    }
 
 
 def calistir():
@@ -42,143 +101,61 @@ def calistir():
         from analiz import analiz_et as motor
         strateji_ad = "TEKNİK (saf)"
 
-    ayar = VADE_AYAR[VADE_KEY]
-    kodlar = BIST_TUM if HISSE_SAYISI <= 0 else BIST_TUM[:HISSE_SAYISI]
-
-    endeks_df = None
-    try:
-        endeks_df, edurum = veri_al("XU100", gun=FETCH_GUN, min_gun=ayar["min_gun"], aralik=ayar["aralik"])
-        print(f"Endeks (XU100): {edurum if endeks_df is not None else 'ÇEKİLEMEDİ'}")
-    except Exception as e:
-        print(f"Endeks çekilemedi ({e})")
-
-    # Endeks al-tut (aynı pencere mantığı: baslangic → son-5), tek gidiş-dönüş sürtünme
-    endeks_altut = None
-    if endeks_df is not None and len(endeks_df) > BASLANGIC + 10:
-        b = float(endeks_df["Close"].iloc[BASLANGIC])
-        s = float(endeks_df["Close"].iloc[-5])
-        if b > 0:
-            endeks_altut = ((s * (1 - _FR) - b * (1 + _FR)) / (b * (1 + _FR))) * 100
-
-    satirlar = []
-    havuz_fazla = []
-    tum_islem = tum_kazanan = test_edilen = poz_sembol = 0
-    altut_yenen = 0
-    strateji_win_list = []
-    buyhold_win_list = []
-
-    for idx, kod in enumerate(kodlar, 1):
+    sonuclar = []
+    for vkey in VADE_LISTE:
+        print(f"\n=== VADE: {vkey} ===")
         try:
-            df, _ = veri_al(kod, gun=FETCH_GUN, min_gun=ayar["min_gun"], aralik=ayar["aralik"])
-            if df is None or len(df) < BASLANGIC + 25:
-                satirlar.append((kod, "veri yetersiz", None)); continue
-            r = backtest_calistir(df, ayar, motor, KOD_SEKTOR.get(kod, "Diğer"),
-                                  baslangic_gun=BASLANGIC, endeks_df=endeks_df)
-            if not r or r.get("islem_sayisi", 0) == 0:
-                satirlar.append((kod, "sinyal yok", None)); continue
-            test_edilen += 1
-            tum_islem += r["islem_sayisi"]; tum_kazanan += r["kazanan"]
-            havuz_fazla.extend(r.get("fazla_list", []))
-            if r.get("mevduati_yeniyor"): poz_sembol += 1
-            if r.get("altut_yeniyor"): altut_yenen += 1
-            strateji_win_list.append(r["strateji_window"])
-            buyhold_win_list.append(r["buyhold_window"])
-            satirlar.append((kod, "ok", r))
-            print(f"[{idx}/{len(kodlar)}] {kod}: {r['islem_sayisi']} işlem | "
-                  f"strateji %{_fmt(r['strateji_window'])} vs al-tut %{_fmt(r['buyhold_window'])}")
+            s = _vade_calistir(vkey, motor, veri_al, VADE_AYAR, backtest_calistir, KOD_SEKTOR, BIST_TUM)
+            sonuclar.append(s)
+            print(f"  N={s['N']} mu={_fmt(s['mu'])} t={_fmt(s['t'],1)} "
+                  f"strateji={_fmt(s['strateji_win'])} al-tut={_fmt(s['buyhold_win'])}")
         except Exception as e:
-            satirlar.append((kod, f"hata: {e}", None))
-            print(f"[{idx}/{len(kodlar)}] {kod}: HATA {e}"); traceback.print_exc()
-
-    # ── ÇITA 1: mevduat (havuz t) ──
-    X = np.asarray(havuz_fazla, dtype=float)
-    N = int(X.size)
-    mu = float(np.mean(X)) if N else 0.0
-    sd = float(np.std(X, ddof=1)) if N > 1 else 0.0
-    t  = (mu / (sd / np.sqrt(N))) if (N > 1 and sd > 0) else 0.0
-    genel_basari = (tum_kazanan / tum_islem * 100) if tum_islem else 0.0
-    yeterli_n = N >= N_MIN
-    mevduat_edge = yeterli_n and (mu > 0) and (t >= T_ESIK)
-
-    # ── ÇITA 2: al-tut ──
-    ort_strateji_win = float(np.mean(strateji_win_list)) if strateji_win_list else 0.0
-    ort_buyhold_win = float(np.mean(buyhold_win_list)) if buyhold_win_list else 0.0
-    altut_geciyor = ort_strateji_win > ort_buyhold_win
-    endeks_geciyor = (endeks_altut is not None) and (ort_strateji_win > endeks_altut)
+            print(f"  VADE HATA {vkey}: {e}"); traceback.print_exc()
 
     # ── RAPOR ──
     L = []
-    L.append(f"# APEX — Audit Backtest · {strateji_ad}")
+    L.append(f"# APEX — Çok Vadeli Audit · {strateji_ad}")
     L.append("")
-    L.append(f"_Üretim: {datetime.datetime.now():%Y-%m-%d %H:%M} · vade: {VADE_KEY} · "
-             f"maliyet: komisyon+slippage+stop-kayma · iki çıta: mevduat & al-tut_")
+    L.append(f"_Üretim: {datetime.datetime.now():%Y-%m-%d %H:%M} · maliyet: komisyon+slippage+stop-kayma · "
+             f"her vade KENDİ penceresi & KENDİ al-tut'una karşı_")
+    L.append("")
+    L.append("## Vade Karşılaştırması (hangi vadede edge var?)")
+    L.append("")
+    L.append("| Vade | Aralık | N | Mevduat-üstü% | t | Strateji(NAV)% | Al-tut% | Endeks al-tut% | Al-tut'u geçen |")
+    L.append("|---|---|---:|---:|---:|---:|---:|---:|:--:|")
+    for s in sonuclar:
+        ea = _fmt(s["endeks_altut"]) if s["endeks_altut"] is not None else "—"
+        L.append(f"| {s['ad']} | {s['aralik']} | {s['N']} | {_fmt(s['mu'])} | {_fmt(s['t'],1)} | "
+                 f"{_fmt(s['strateji_win'])} | {_fmt(s['buyhold_win'])} | {ea} | "
+                 f"{s['altut_yenen']}/{s['test_edilen']} |")
     L.append("")
 
-    # ÇITA 2 önce — asıl mahkumiyet/temize çıkış burada
-    L.append("## ÇITA 2 — Al-tut benchmark (asıl rakip: BIST-100 al ve tut)")
+    # Manşet: herhangi bir vade her iki çıtayı da geçiyor mu?
+    kazanan = []
+    for s in sonuclar:
+        mevduat_ok = (s["N"] >= N_MIN) and (s["mu"] > 0) and (s["t"] >= T_ESIK)
+        altut_ok = s["strateji_win"] > s["buyhold_win"]
+        if mevduat_ok and altut_ok:
+            kazanan.append(s["ad"])
+    L.append("## Karar")
     L.append("")
-    if altut_geciyor and endeks_geciyor:
-        L.append(f"**Strateji al-tut'u GEÇİYOR.** Fund getirisi (nakit dahil) ort **%{_fmt(ort_strateji_win)}**; "
-                 f"hisse al-tut **%{_fmt(ort_buyhold_win)}**, endeks al-tut **%{_fmt(endeks_altut) if endeks_altut is not None else '—'}**. "
-                 f"Timing değer katıyor.")
+    if kazanan:
+        L.append(f"**Edge sinyali olan vade(ler): {', '.join(kazanan)}** — hem mevduatı (t≥{T_ESIK}) "
+                 f"hem al-tut'u geçti. KANIT değil, ön eleme. Sonraki: out-of-sample + (gün içiyse) "
+                 f"15dk gecikme modeli.")
     else:
-        L.append(f"**Strateji al-tut'u YENMİYOR — mevduat kıyasından daha sert mahkumiyet.** "
-                 f"Fund getirisi (nakit dahil) ort **%{_fmt(ort_strateji_win)}**, ama hisse al-tut "
-                 f"**%{_fmt(ort_buyhold_win)}**" +
-                 (f", endeks al-tut **%{_fmt(endeks_altut)}**" if endeks_altut is not None else "") + ". "
-                 f"Seçici long-only teknik, yükselen piyasada zamanın çoğunu nakitte geçirip trendi "
-                 f"KAÇIRIYOR → kayıp sinyalde değil, timing/execution varsayımında.")
+        L.append("**Hiçbir vade her iki çıtayı geçemedi.** Hiçbiri al-tut'u + mevduatı birlikte yenmiyor. "
+                 "Yani 'doğru vadeyi seç' yaklaşımı tek başına edge üretmiyor — sorun vade seçimi değil, "
+                 "sinyal ailesi. Sonraki kaldıraç: farklı alfa kaynağı (fundamental/makro veya order-flow) "
+                 "ya da 'al-tut'a yakın kal' (daha az gir-çık) varyantı.")
     L.append("")
-    L.append(f"- Strateji (fund NAV, nakit dahil) ort. pencere getirisi: **%{_fmt(ort_strateji_win)}**")
-    L.append(f"- Hisse al-tut ort. pencere getirisi: **%{_fmt(ort_buyhold_win)}**")
-    L.append(f"- Endeks (XU100) al-tut pencere getirisi: **{('%'+_fmt(endeks_altut)) if endeks_altut is not None else '—'}**")
-    L.append(f"- Strateji, hisse al-tut'u geçen sembol: **{altut_yenen}/{test_edilen}**")
-    L.append("")
-    L.append("> Not: Pencere uzun ve yükseliş içeriyorsa al-tut doğal olarak yüksek olur; strateji nakitte "
-             "beklediği için geride kalması beklenir. Asıl soru: bu geride kalma kabul edilebilir mi, yoksa "
-             "strateji ailesi piyasayı yenemiyor mu? Maliyet (komisyon+slippage+stop kayması) gerçekçi alındı; "
-             "edge'i şişirmiyor.")
-
-    # ÇITA 1 — mevduat
-    L.append("")
-    L.append("## ÇITA 1 — Mevduat (havuz t-istatistiği)")
-    L.append("")
-    if not yeterli_n:
-        L.append(f"**KARAR VERİLEMEZ.** N={N} < {N_MIN}.")
-    elif mevduat_edge:
-        L.append(f"**Ön elemeyi geçti (kanıt değil).** İşlem başı mevduat-üstü **%{_fmt(mu)}**, t=**{_fmt(t,1)}** (N={N}).")
-    else:
-        L.append(f"**Mevduatı yenmiyor.** İşlem başı mevduat-üstü **%{_fmt(mu)}**, t=**{_fmt(t,1)}** (N={N}) — "
-                 f"|t| eşiğin ({T_ESIK}) altında.")
-    L.append("")
-    L.append(f"- Test edilen sembol: **{test_edilen}/{len(kodlar)}** · havuz N: **{N}**")
-    L.append(f"- Mevduat-üstü pozitif sembol: **{poz_sembol}/{test_edilen}**")
-    L.append(f"- Genel başarı (kazanan/işlem): **%{_fmt(genel_basari,1)}**")
-
-    # ── Sembol tablosu ──
-    L.append("")
-    L.append("## Hisse Bazında")
-    L.append("")
-    L.append("| Hisse | İşlem | Başarı% | Strateji%(NAV) | Al-tut% | Mevduat-üstü% | Al-tut'u geçti? |")
-    L.append("|---|---:|---:|---:|---:|---:|:--:|")
-
-    def _key(t3):
-        _, _, r = t3
-        return (r["strateji_window"] - r["buyhold_window"]) if r else -1e9
-
-    for kod, durum, r in sorted(satirlar, key=_key, reverse=True):
-        if r is None:
-            L.append(f"| {kod} | – | – | – | – | – | _{durum}_ |"); continue
-        ok = "✓" if r.get("altut_yeniyor") else "✗"
-        L.append(f"| {kod} | {r['islem_sayisi']} | {_fmt(r['basari_pct'],1)} | "
-                 f"{_fmt(r['strateji_window'])} | {_fmt(r['buyhold_window'])} | "
-                 f"{_fmt(r['ort_mevduat_ustu'])} | {ok} |")
-
+    L.append("> Not: Gün içi (15dk) penceresi ~60 günle sınırlı (Yahoo) ve 15dk GECİKMEYİ modellemez → "
+             "canlı için İYİMSER. Eğer gün içi edge gösterirse, bir bar geç giriş ekleyip yeniden ölçeceğiz.")
     L.append("")
     L.append("---")
-    L.append(f"*Strateji: {strateji_ad}. Maliyet: komisyon %{_fmt(0.2,1)}+slippage %0.15 (tek yön), "
-             f"stop'ta ekstra %{_fmt(STOP_EKSTRA*100,1)} kayma. Nakitteyken mevduat (~%{int(MEVDUAT_YILLIK*100)}) "
-             f"kazanılır (cash drag modeli). Walk-forward, leakage yok. Strateji%(NAV)=nakit dahil fund getirisi.*")
+    L.append(f"*Strateji: {strateji_ad}. Komisyon %0.2+slippage %0.15 (tek yön), stop ekstra "
+             f"%{_fmt(STOP_EKSTRA*100,1)}. Nakitte mevduat (~%{int(MEVDUAT_YILLIK*100)}). "
+             f"Walk-forward, leakage yok.*")
 
     metin = "\n".join(L)
     with open("BACKTEST_SONUC.md", "w", encoding="utf-8") as f:
