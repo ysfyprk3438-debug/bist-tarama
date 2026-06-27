@@ -1,41 +1,119 @@
-# APEX — Dürüst Backtest Sonucu
+# APEX — Dürüst Backtest Sonucu (istatistiksel karar)
 
-*Üretim: 2026-06-27 14:07 · vade: haftalik · komisyon dahil · mevduat kıyası ~%45/yıl*
+_Üretim: 2026-06-27 14:59 · vade: haftalik · komisyon dahil · karar eşiği: havuz t ≥ 2.0 ve N ≥ 100_
 
-## SORU: Strateji mevduatı yeniyor mu?
+## SORU: Strateji mevduatı GÜVENİLİR biçimde yeniyor mu?
 
-**EVET (bu örneklemde).** Test edilen 18 hissede ortalama, işlem başına mevduatın **%0.75** üstünde; piyasada-iken yıllık ~%2669.0 (mevduat %45).
+**HAYIR — kanıtlanmış edge YOK.** İşlem başına mevduat-üstü ortalama **%-0.31**, havuz t-istatistiği **-1.9** (N=1107). |t|, eşiğin (2.0) altında → fark istatistiksel gürültüden ayırt edilemiyor. Bu, parametre ayarı değil, strateji ailesi sorunudur.
 
-- Mevduatı yenen hisse: **10/18**
-- Toplam işlem: **49** · genel başarı: **%51.0**
-- İşlem başı ort. mevduat üstü net getiri: **%0.75**
+- Test edilen sembol: **94/94**
+- Toplam işlem (havuz N): **1107**
+- Mevduat-üstü pozitif olan sembol: **41/94** (yayılım — edge geniş mi, birkaç sembolden mi?)
+- Mevduatı geçen işlem oranı: **%40.8**
+- İşlem başı ort. mevduat-üstü net getiri: **%-0.31**
+- Havuz t-istatistiği: **-1.9**  (karar eşiği 2.0)
+- Genel başarı (kazanan/işlem): **%41.0**
 
-> Not: "piyasada-iken yıllık" boş/nakit zamanı saymaz — iyimser tavandır. Gerçek performans bunun altındadır. Brüt getiri kâğıt üstünde güzel görünür; asıl gerçeği komisyon-sonrası NET getiri söyler.
+> Not (KARAR DIŞI): Tablodaki 'Yıllık%(ref)' = 'piyasada-iken yıllık' sayısıdır; nakit/boş zamanı saymadığı için ŞİŞİKTİR ve KARARDA KULLANILMAZ, yalnızca referanstır.
 
 ## Hisse Bazında
 
-| Hisse | İşlem | Başarı% | Brüt% | Net% | Mevduat üstü% | Yıllık%* | Mevduatı yener? |
-|---|---|---|---|---|---|---|---|
-| AKBNK | 2 | 50.0 | 2.54 | 2.14 | 1.93 | 2864.0 | ✅ |
-| GARAN | 4 | 50.0 | 1.82 | 1.41 | 1.18 | 682.6 | ✅ |
-| HALKB | 2 | 100.0 | 9.01 | 8.60 | 8.08 | 41034.5 | ✅ |
-| ISCTR | 1 | 0.0 | -3.49 | -3.88 | -4.19 | -99.2 | ❌ |
-| VAKBN | 3 | 33.3 | -0.68 | -1.08 | -1.83 | -45.2 | ❌ |
-| YKBNK | 3 | 66.7 | 3.51 | 3.10 | 2.01 | 171.2 | ✅ |
-| TSKB | 4 | 25.0 | -1.03 | -1.43 | -2.12 | -55.6 | ❌ |
-| ALBRK | 2 | 50.0 | 0.13 | -0.27 | -2.03 | -7.1 | ❌ |
-| SKBNK | 4 | 75.0 | 3.47 | 3.06 | 2.63 | 1144.2 | ✅ |
-| KLNMA | 2 | 50.0 | 1.36 | 0.96 | 0.65 | 202.4 | ✅ |
-| EUPWR | — | — | — | — | — | — | _sinyal yok_ |
-| ODAS | — | — | — | — | — | — | _sinyal yok_ |
-| ENJSA | 2 | 100.0 | 7.26 | 6.84 | 5.77 | 898.1 | ✅ |
-| AKSEN | 2 | 0.0 | -4.22 | -4.61 | -4.87 | -99.9 | ❌ |
-| ZOREN | 4 | 25.0 | -1.63 | -2.03 | -2.75 | -67.3 | ❌ |
-| AYEN | 2 | 50.0 | -0.30 | -0.70 | -1.10 | -51.8 | ❌ |
-| AYDEM | 3 | 33.3 | -0.84 | -1.24 | -1.62 | -73.8 | ❌ |
-| KCAER | 6 | 66.7 | 3.85 | 3.45 | 2.56 | 293.0 | ✅ |
-| CWENE | 1 | 100.0 | 9.53 | 9.11 | 7.78 | 1056.1 | ✅ |
-| NATEN | 2 | 50.0 | 2.52 | 2.11 | 1.45 | 196.4 | ✅ |
+| Hisse | İşlem | Başarı% | Net% | Mevduat-üstü% | Yıllık%(ref) | M-üstü>0? |
+|---|---:|---:|---:|---:|---:|:--:|
+| CWENE | 4 | 100.0 | 41.47 | 8.40 | 12939.7 | ✓ |
+| DGATE | 3 | 66.7 | 12.67 | 3.95 | 12501.6 | ✓ |
+| ADEL | 8 | 25.0 | 29.47 | 3.77 | 369.0 | ✓ |
+| NATEN | 8 | 75.0 | 38.15 | 3.69 | 1453.8 | ✓ |
+| HEKTS | 7 | 71.4 | 30.38 | 3.54 | 1780.0 | ✓ |
+| AEFES | 12 | 75.0 | 58.43 | 3.38 | 785.6 | ✓ |
+| LOGO | 8 | 62.5 | 23.02 | 2.52 | 3008.8 | ✓ |
+| ARENA | 3 | 66.7 | 9.27 | 2.36 | 284.9 | ✓ |
+| SASA | 13 | 61.5 | 37.77 | 2.10 | 444.7 | ✓ |
+| PRKAB | 12 | 58.3 | 31.94 | 1.83 | 278.5 | ✓ |
+| HALKB | 16 | 56.2 | 44.06 | 1.80 | 243.4 | ✓ |
+| ENJSA | 10 | 60.0 | 26.59 | 1.72 | 201.4 | ✓ |
+| ALARK | 8 | 62.5 | 17.84 | 1.61 | 267.8 | ✓ |
+| MGROS | 16 | 56.2 | 34.28 | 1.49 | 277.5 | ✓ |
+| ISDMR | 19 | 63.2 | 50.45 | 1.47 | 170.2 | ✓ |
+| GUBRF | 13 | 53.8 | 20.22 | 1.19 | 255.4 | ✓ |
+| NETAS | 4 | 50.0 | 5.55 | 1.18 | 308.9 | ✓ |
+| GARAN | 14 | 50.0 | 21.22 | 1.16 | 307.5 | ✓ |
+| RYSAS | 10 | 50.0 | 12.31 | 0.85 | 133.3 | ✓ |
+| ISGYO | 16 | 50.0 | 21.39 | 0.81 | 119.5 | ✓ |
+| ASELS | 11 | 54.5 | 17.20 | 0.81 | 96.1 | ✓ |
+| ECILC | 16 | 50.0 | 20.45 | 0.80 | 131.3 | ✓ |
+| GSDHO | 18 | 44.4 | 19.73 | 0.71 | 140.3 | ✓ |
+| ECZYT | 10 | 50.0 | 9.97 | 0.68 | 128.4 | ✓ |
+| BFREN | 13 | 53.8 | 13.64 | 0.63 | 120.5 | ✓ |
+| KARSN | 12 | 50.0 | 11.61 | 0.61 | 113.0 | ✓ |
+| ALBRK | 11 | 54.5 | 14.97 | 0.59 | 77.2 | ✓ |
+| KRDMD | 15 | 46.7 | 14.57 | 0.53 | 84.6 | ✓ |
+| HLGYO | 16 | 43.8 | 11.70 | 0.41 | 76.6 | ✓ |
+| YKBNK | 15 | 53.3 | 18.31 | 0.37 | 59.2 | ✓ |
+| DOAS | 12 | 50.0 | 11.38 | 0.33 | 61.6 | ✓ |
+| DEVA | 10 | 50.0 | 6.86 | 0.32 | 69.4 | ✓ |
+| THYAO | 14 | 50.0 | 12.46 | 0.25 | 56.3 | ✓ |
+| TATGD | 17 | 47.1 | 9.36 | 0.25 | 60.6 | ✓ |
+| EREGL | 12 | 41.7 | 6.30 | 0.24 | 59.1 | ✓ |
+| ULKER | 15 | 46.7 | 12.68 | 0.23 | 52.7 | ✓ |
+| BIMAS | 17 | 47.1 | 11.25 | 0.13 | 45.4 | ✓ |
+| EUPWR | 5 | 40.0 | 1.04 | 0.07 | 28.6 | ✓ |
+| PAPIL | 5 | 40.0 | 1.37 | 0.06 | 28.1 | ✓ |
+| ISCTR | 9 | 44.4 | 5.42 | 0.05 | 37.1 | ✓ |
+| CIMSA | 9 | 44.4 | 7.88 | 0.04 | 38.5 | ✓ |
+| KAREL | 6 | 50.0 | 3.87 | -0.00 | 34.3 | ✗ |
+| SMART | 7 | 42.9 | 2.50 | -0.03 | 26.8 | ✗ |
+| TCELL | 17 | 47.1 | 6.59 | -0.03 | 29.9 | ✗ |
+| MPARK | 7 | 42.9 | 1.42 | -0.04 | 21.1 | ✗ |
+| CCOLA | 15 | 46.7 | 11.16 | -0.04 | 32.3 | ✗ |
+| DARDL | 8 | 37.5 | 2.19 | -0.08 | 21.2 | ✗ |
+| GLYHO | 9 | 44.4 | 5.07 | -0.12 | 27.7 | ✗ |
+| VAKBN | 15 | 46.7 | 4.78 | -0.16 | 20.6 | ✗ |
+| INDES | 9 | 44.4 | 1.98 | -0.19 | 17.2 | ✗ |
+| PNSUT | 10 | 40.0 | 4.56 | -0.36 | 18.7 | ✗ |
+| TAVHL | 10 | 40.0 | 0.17 | -0.41 | 1.2 | ✗ |
+| KCAER | 10 | 40.0 | 1.02 | -0.43 | 5.6 | ✗ |
+| ODAS | 7 | 42.9 | -0.29 | -0.47 | -2.6 | ✗ |
+| GOLTS | 9 | 33.3 | 1.10 | -0.56 | 5.6 | ✗ |
+| TKFEN | 7 | 42.9 | -1.56 | -0.56 | -15.9 | ✗ |
+| AYEN | 12 | 41.7 | -3.01 | -0.58 | -18.6 | ✗ |
+| BRISA | 10 | 40.0 | -2.90 | -0.72 | -18.3 | ✗ |
+| CLEBI | 9 | 33.3 | -4.95 | -0.80 | -46.1 | ✗ |
+| GESAN | 11 | 36.4 | -5.03 | -0.83 | -28.6 | ✗ |
+| KLNMA | 30 | 36.7 | -13.20 | -0.84 | -33.0 | ✗ |
+| AKBNK | 9 | 33.3 | -3.58 | -0.84 | -21.2 | ✗ |
+| EKGYO | 12 | 33.3 | -6.97 | -0.89 | -39.8 | ✗ |
+| VKGYO | 18 | 33.3 | -7.86 | -1.03 | -21.6 | ✗ |
+| ENKAI | 14 | 35.7 | -7.46 | -1.03 | -29.2 | ✗ |
+| SNGYO | 15 | 33.3 | -11.38 | -1.10 | -48.7 | ✗ |
+| SKBNK | 11 | 36.4 | -7.56 | -1.14 | -38.5 | ✗ |
+| AFYON | 16 | 31.2 | -10.36 | -1.16 | -34.9 | ✗ |
+| TSKB | 14 | 35.7 | -7.43 | -1.17 | -24.1 | ✗ |
+| TOASO | 14 | 35.7 | -9.72 | -1.22 | -35.5 | ✗ |
+| PETKM | 17 | 35.3 | -11.67 | -1.26 | -35.1 | ✗ |
+| BERA | 9 | 33.3 | -8.24 | -1.31 | -51.0 | ✗ |
+| ARCLK | 16 | 31.2 | -15.30 | -1.36 | -59.0 | ✗ |
+| BANVT | 17 | 29.4 | -19.47 | -1.46 | -77.5 | ✗ |
+| DOHOL | 12 | 33.3 | -11.09 | -1.47 | -46.3 | ✗ |
+| FROTO | 16 | 31.2 | -13.43 | -1.47 | -39.1 | ✗ |
+| TTKOM | 11 | 27.3 | -14.29 | -1.71 | -68.3 | ✗ |
+| KCHOL | 20 | 30.0 | -22.37 | -1.80 | -52.0 | ✗ |
+| VESTL | 10 | 30.0 | -14.42 | -1.85 | -75.0 | ✗ |
+| AKSEN | 10 | 30.0 | -13.46 | -1.90 | -61.0 | ✗ |
+| ZOREN | 13 | 30.8 | -17.45 | -2.01 | -57.9 | ✗ |
+| TTRAK | 20 | 25.0 | -24.32 | -2.03 | -50.9 | ✗ |
+| TRGYO | 6 | 33.3 | -8.52 | -2.08 | -57.5 | ✗ |
+| SELEC | 8 | 25.0 | -13.78 | -2.19 | -75.0 | ✗ |
+| SOKM | 15 | 20.0 | -25.14 | -2.30 | -77.0 | ✗ |
+| AYDEM | 17 | 23.5 | -29.69 | -2.36 | -85.3 | ✗ |
+| MAALT | 11 | 18.2 | -22.93 | -2.59 | -92.3 | ✗ |
+| CEMTS | 10 | 20.0 | -21.66 | -2.84 | -83.2 | ✗ |
+| OTKAR | 16 | 18.8 | -32.62 | -2.86 | -84.2 | ✗ |
+| SAHOL | 13 | 15.4 | -28.65 | -2.91 | -88.9 | ✗ |
+| MAVI | 6 | 16.7 | -13.71 | -3.30 | -61.8 | ✗ |
+| TRCAS | 6 | 16.7 | -15.34 | -3.35 | -75.7 | ✗ |
+| PGSUS | 18 | 11.1 | -44.64 | -3.71 | -90.7 | ✗ |
+| KLGYO | 3 | 0.0 | -12.55 | -4.61 | -99.9 | ✗ |
 
 ---
-*Komisyon: işlem başına tek yön %0.2 (gidiş-dönüş ~%0.4). Bypass yalnızca backtest=True yolunda — canlı tarama/robot davranışı değişmedi.*
+*Komisyon: işlem başına tek yön ~%0.2 (gidiş-dönüş ~%0.4). Tazelik bypass'ı yalnızca backtest=True yolunda — canlı tarama/robot davranışı değişmedi. 'M-üstü>0?' sütunu sembol-bazında ort. mevduat-üstü>0 demektir (ZAYIF, tek-sembol N düşük). GERÇEK karar, yukarıdaki havuz t-istatistiğidir.*
