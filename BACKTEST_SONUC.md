@@ -1,15 +1,13 @@
-# APEX — EVDS Makro Sondası
+# APEX — EVDS Teşhis
 
-_2026-06-27 21:35_
+_2026-06-27 21:44_
 
-Anahtar uzunluğu: 10 karakter (…EpG)
+Anahtar: 10 karakter (…EpG)
 
-Durum: **JSON değil · CT=text/html; charset=utf-8 · gövde: <!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" href="/assets/images/favicon-BIeG2SoQ.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<!--      <meta name="viewport" content="width=device-width, initial-scale=1.0, maxim**
+İki yöntem deneniyor (basit USD serisiyle):
 
-Veri gelmedi. Yukarıdaki gövde mesajı sebebi gösteriyor (401/403 → anahtar; HTML → endpoint; SSL → sertifika).
+**1) Anahtar HEADER'da:** ❌ HTTP 200 · text/html; charset=utf-8 · mesaj: «--> EVDS»
+
+**2) Anahtar URL'de:** ❌ HTTP 200 · text/html; charset=utf-8 · mesaj: «--> EVDS»
+
+> ✅ olan yöntem varsa onu kullanırız. İkisi de ❌ ve mesaj 'anahtar/key/invalid' diyorsa EVDS profilinden anahtarı tam kopyalamak gerekiyor (kısaltılmış olabilir).
