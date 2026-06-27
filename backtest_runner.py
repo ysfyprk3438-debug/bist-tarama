@@ -11,6 +11,7 @@ NOT: makro_veri.py çeyreklik statik tablodur; her yeni PPK/TÜİK verisinde ell
 import os, csv, datetime
 import numpy as np, pandas as pd
 import makro_oto as mk   # hibrit: statik taban + OECD oto-besleme (statiğe fallback)
+import pozisyon as pz    # vol-hedefli risk-ölçekleme (risk yönetimi, getiri tahmini değil)
 
 CSV = "ileri_gunluk.csv"
 MD = "ILERI_DURUM.md"
@@ -86,6 +87,25 @@ def calistir():
          "becerisini şanstan ayıramadı — yani bu duruşu 'kanıtlanmış edge' değil, 'rejim-farkında temkin' "
          "olarak oku. Aşağıdaki ileri karne, zamanla gerçeği söyleyecek tek şeydir.", "",
          f"_Makro kaynak: {mk.kaynak_durumu()}_", ""]
+
+    # ---- Risk-ölçekli pozisyon önerisi ----
+    try:
+        pos = pz.oneri(xu_df["Close"].values, bugun_durus)
+        yvol, tablo = pz.tradeoff_tablosu(xu_df["Close"].values)
+        L += ["## Önerilen pozisyon (risk-ölçekli)", "",
+              f"XU100 yıllık oynaklık (60g): **%{(yvol or 0)*100:.0f}**", "",
+              f"### → %{pos['w']*100:.1f} hisse · %{(1-pos['w'])*100:.1f} mevduat",
+              f"_(saf vol-hedef %{pos['w_saf']*100:.1f} × rejim tilt {pos['carpan']:.1f} · "
+              f"DD bütçesi %{pos['dd_butce']:.1f})_", "",
+              "| DD bütçesi | İmâ edilen hisse % (saf vol-hedef) |", "|---|---:|"]
+        for b, w in tablo:
+            L.append(f"| %{b:.1f} | %{w:.1f} |")
+        L += ["", "> **Vol-hedefleme risk yönetimidir, getiri tahmini DEĞİL.** Pozisyonu oynaklığa göre "
+              "ölçekler, 'ya hep ya hiç'i önler. DD→vol dönüşümü kaba kuraldır (k=2.5), garanti değil. "
+              "Tablo acı gerçeği gösterir: dar DD bütçesi = küçük hisse maruziyeti. Bütçeyi gevşetmek "
+              "daha çok hisse demek — ama daha çok da düşüş riski.", ""]
+    except Exception as e:
+        L += [f"_(pozisyon önerisi hesaplanamadı: {type(e).__name__})_", ""]
     if kr:
         nav_p, nav_e, nav_m, gun = kr
         kazanan = max([("Duruş", nav_p), ("Al-tut endeks", nav_e), ("Mevduat", nav_m)], key=lambda x: x[1])
