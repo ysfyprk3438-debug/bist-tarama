@@ -1,20 +1,22 @@
-# APEX — Çok Vadeli Audit · HİBRİT (eşik=60.0)
+# APEX — Cross-Sectional Audit · Hep Yatırımda, Top-N Seçim
 
-_Üretim: 2026-06-27 18:33 · maliyet: komisyon+slippage+stop-kayma · her vade KENDİ penceresi & KENDİ al-tut'una karşı_
+_Üretim: 2026-06-27 18:54 · 94 hisse · 3.6 yıl · top-12, ~21g dengeleme · maliyet: komisyon+slippage · leakage yok_
 
-## Vade Karşılaştırması (hangi vadede edge var?)
+## Soru: Seçim, yatırımda kalarak XU100'ü yeniyor mu?
 
-| Vade | Aralık | N | Mevduat-üstü% | t | Strateji(NAV)% | Al-tut% | Endeks al-tut% | Al-tut'u geçen |
-|---|---|---:|---:|---:|---:|---:|---:|:--:|
-| Gün İçi (15dk) | 15m | 928 | -1.33 | -32.0 | 162.25 | -2.44 | -5.58 | 89/90 |
-| Günlük (Scalp) | 1d | 2042 | -0.68 | -8.3 | 115.52 | 211.08 | 227.54 | 40/94 |
-| Haftalık (Swing) | 1d | 687 | -0.89 | -4.4 | 134.24 | 214.73 | 227.54 | 39/92 |
+| Strateji | Son NAV (×) | Getiri% | Yıllık% | Sharpe | MaxDD% | XU100'ü geçti? |
+|---|---:|---:|---:|---:|---:|:--:|
+| Momentum (top-N) | 2.55 | 154.7 | 29.8 | 0.19 | -36.1 | ❌ |
+| Hibrit Sinyal (top-N) | 2.06 | 106.4 | 22.4 | -0.04 | -28.3 | ❌ |
+| _XU100 al-tut_ | 2.92 | 191.8 | 34.8 | 0.31 | -22.9 | — |
+| _Eşit-ağırlık TÜM al-tut_ | 2.72 | 172.4 | 32.2 | — | — | ❌ |
+| _Mevduat (~%45)_ | 3.79 | 279.5 | 45.0 | — | — | ✅ |
 
 ## Karar
 
-**Hiçbir vade her iki çıtayı geçemedi.** Hiçbiri al-tut'u + mevduatı birlikte yenmiyor. Yani 'doğru vadeyi seç' yaklaşımı tek başına edge üretmiyor — sorun vade seçimi değil, sinyal ailesi. Sonraki kaldıraç: farklı alfa kaynağı (fundamental/makro veya order-flow) ya da 'al-tut'a yakın kal' (daha az gir-çık) varyantı.
+**Hiçbir seçim XU100'ü geçemedi.** Bu evrende cross-sectional seçim de endeksi yenmiyor — muhtemelen hisseler fazla korele ve endeks birkaç dev hisseyle taşınıyor. Sonraki kaldıraç: (a) farklı faktör (değer/kalite/düşük-volatilite), (b) fundamental veri, ya da hedefi değiştir: 'endeksi yenmek' yerine 'benzer getiri + daha düşük MaxDD' (risk-ayarlı).
 
-> Not: Gün içi (15dk) penceresi ~60 günle sınırlı (Yahoo) ve 15dk GECİKMEYİ modellemez → canlı için İYİMSER. Eğer gün içi edge gösterirse, bir bar geç giriş ekleyip yeniden ölçeceğiz.
+> Sinyal scorer dengeleme başına ort. 3.2 hisse işaretledi (top-12 hedefi). 12'in altındaysa kalan ağırlık endekste tutuldu (hep yatırımda).
 
 ---
-*Strateji: HİBRİT (eşik=60.0). Komisyon %0.2+slippage %0.15 (tek yön), stop ekstra %0.3. Nakitte mevduat (~%45). Walk-forward, leakage yok.*
+*Hep %100 yatırımda. Komisyon %0.2+slippage %0.15 (tek yön, devirde). Skor t kapanışında, getiri t+1 — leakage yok.*
