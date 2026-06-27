@@ -111,3 +111,80 @@ if __name__ == "__main__":
     # hızlı manuel sonda
     for k in ["EREGL", "GARAN", "ASELS"]:
         print(k, faktor_hesapla(k, datetime.date.today()))
+
+
+# ══════════════════════════════════════════════════════════════
+# TARİHSEL FAKTÖR ZAMAN SERİSİ (backtest için — bir kez çek, TTM hesapla)
+# ══════════════════════════════════════════════════════════════
+def _ceyrek_listesi(baslangic_yil, bugun=None):
+    bugun = bugun or datetime.date.today()
+    out = []
+    for y in range(bugun.year, baslangic_yil - 1, -1):
+        for p in [12, 9, 6, 3]:
+            if datetime.date(y, {3:3,6:6,9:9,12:12}[p], 28) <= bugun:
+                out.append((y, p))
+    return out  # yeni→eski
+
+
+def tum_ceyrekler(kod, baslangic_yil=2017):
+    """Hissenin TÜM çeyreklerini batch'le çeker. {(yil,period):(net_kar_kum, ozkaynak)}, tip."""
+    ceyrekler = _ceyrek_listesi(baslangic_yil)
+    tip_bulundu = None; M = None; sonuc = {}
+    # tip tespiti: ilk chunk'ı iki grupla dene
+    for i in range(0, len(ceyrekler), 4):
+        chunk = ceyrekler[i:i+4]
+        d = None
+        if M is None:
+            for tip, MM in [("sanayi", SANAYI), ("banka", BANKA)]:
+                try:
+                    dd = _fetch(kod, chunk, MM["grup"])
+                except Exception:
+                    dd = None
+                if dd and MM["net_kar"] in dd and MM["ozkaynak"] in dd:
+                    tip_bulundu, M, d = tip, MM, dd; break
+        else:
+            try:
+                d = _fetch(kod, chunk, M["grup"])
+            except Exception:
+                d = None
+        if not d:
+            continue
+        nk = d.get(M["net_kar"], []); oz = d.get(M["ozkaynak"], [])
+        for j, (y, p) in enumerate(chunk):
+            n = _say(nk[j]) if j < len(nk) else None
+            o = _say(oz[j]) if j < len(oz) else None
+            if n is not None and o is not None:
+                sonuc[(y, p)] = (n, o)
+    return sonuc, tip_bulundu
+
+
+def _ttm(ceyrek_dict, y, p):
+    """TTM net kâr = kum(y,p) + tamyıl(y-1,12) - kum(y-1,p)."""
+    cur = ceyrek_dict.get((y, p))
+    if cur is None:
+        return None
+    if p == 12:
+        return cur[0]
+    prev_yil_son = ceyrek_dict.get((y-1, 12))
+    prev_yil_ayni = ceyrek_dict.get((y-1, p))
+    if prev_yil_son is None or prev_yil_ayni is None:
+        return None
+    return cur[0] + prev_yil_son[0] - prev_yil_ayni[0]
+
+
+def faktor_zaman_serisi(kod, baslangic_yil=2017):
+    """{aciklanma_tarihi: {roe, buyume}} — TTM bazlı, point-in-time. backtest paneli için."""
+    cey, tip = tum_ceyrekler(kod, baslangic_yil)
+    if not cey:
+        return {}, tip
+    seri = {}
+    for (y, p) in sorted(cey.keys()):
+        ttm = _ttm(cey, y, p)
+        ozk = cey[(y, p)][1]
+        if ttm is None or ozk in (None, 0):
+            continue
+        roe = ttm / ozk                    # TTM ROE (yıllık)
+        ttm_onceki = _ttm(cey, y-1, p)
+        buyume = (ttm/ttm_onceki - 1.0) if (ttm_onceki and ttm_onceki > 0) else None
+        seri[donem_aciklanma(y, p)] = {"roe": roe, "buyume": buyume}
+    return seri, tip
