@@ -1,0 +1,190 @@
+"""
+═══════════════════════════════════════════════════════════════
+APEX · DÜRÜST BACKTEST KOŞUCUSU  (v3 — HİBRİT motor)
+═══════════════════════════════════════════════════════════════
+Saf teknik baseline (ölçüldü): N=1107, mevduat-üstü %-0.31, t=-1.9 → edge YOK.
+
+Bu koşu HİBRİT motoru test eder (hibrit_analiz.py):
+  teknik tetik × makro/rejim × kurumsal birikim.
+Soru: seçicilik, mevduat-üstü getiriyi POZİTİF ve İSTATİSTİKSEL anlamlı
+      hale getiriyor mu? (havuz t ≥ 2.0, N ≥ 100)
+
+- Endeks (XU100) bir kez çekilir; her dilimde NOKTA-ZAMANLI beslenir (lookahead yok).
+- Tazelik bypass yalnızca backtest=True yolunda (canlı davranış değişmez).
+- Komisyon dahil (gidiş-dönüş ~%0.4).
+- Sonuç BACKTEST_SONUC.md olarak yazılır.
+"""
+
+import datetime
+import traceback
+import numpy as np
+
+# ── Ayarlar ──
+STRATEJI     = "hibrit"     # "hibrit" | "teknik" (kıyas için)
+VADE_KEY     = "haftalik"
+FETCH_GUN    = 1500
+BASLANGIC    = 120
+HISSE_SAYISI = 0            # 0 = tüm liste
+T_ESIK       = 2.0
+N_MIN        = 100
+
+# Saf teknik baseline (önceki koşudan) — kıyas için referans
+BASE_T  = -1.9
+BASE_MU = -0.31
+BASE_N  = 1107
+
+
+def _fmt(x, n=2):
+    try:
+        return f"{x:.{n}f}"
+    except Exception:
+        return str(x)
+
+
+def calistir():
+    from veri import veri_al, VADE_AYAR
+    from backtest import backtest_calistir
+    from tarama_core import BIST_TUM, KOD_SEKTOR
+
+    if STRATEJI == "hibrit":
+        from hibrit_analiz import analiz_et as motor
+        from hibrit_analiz import HIBRIT_ESIK
+        strateji_ad = f"HİBRİT (eşik={HIBRIT_ESIK})"
+    else:
+        from analiz import analiz_et as motor
+        strateji_ad = "TEKNİK (saf)"
+
+    ayar = VADE_AYAR[VADE_KEY]
+    kodlar = BIST_TUM if HISSE_SAYISI <= 0 else BIST_TUM[:HISSE_SAYISI]
+
+    # Endeksi bir kez çek (makro/göreli güç için). Çekilemezse makro nazikçe zayıflar.
+    endeks_df = None
+    try:
+        endeks_df, edurum = veri_al("XU100", gun=FETCH_GUN, min_gun=ayar["min_gun"], aralik=ayar["aralik"])
+        print(f"Endeks (XU100): {edurum if endeks_df is not None else 'ÇEKİLEMEDİ'}")
+    except Exception as e:
+        print(f"Endeks çekilemedi ({e}) — makro yalnızca hisse trendine dayanacak.")
+
+    satirlar = []
+    havuz_fazla = []
+    tum_islem = 0
+    tum_kazanan = 0
+    test_edilen = 0
+    poz_sembol = 0
+
+    for idx, kod in enumerate(kodlar, 1):
+        try:
+            df, _ = veri_al(kod, gun=FETCH_GUN, min_gun=ayar["min_gun"], aralik=ayar["aralik"])
+            if df is None or len(df) < BASLANGIC + 25:
+                satirlar.append((kod, "veri yetersiz", None))
+                print(f"[{idx}/{len(kodlar)}] {kod}: veri yetersiz")
+                continue
+            r = backtest_calistir(df, ayar, motor, KOD_SEKTOR.get(kod, "Diğer"),
+                                  baslangic_gun=BASLANGIC, endeks_df=endeks_df)
+            if not r or r.get("islem_sayisi", 0) == 0:
+                satirlar.append((kod, "sinyal yok", None))
+                print(f"[{idx}/{len(kodlar)}] {kod}: sinyal yok")
+                continue
+            test_edilen += 1
+            tum_islem += r["islem_sayisi"]
+            tum_kazanan += r["kazanan"]
+            havuz_fazla.extend(r.get("fazla_list", []))
+            if r.get("mevduati_yeniyor"):
+                poz_sembol += 1
+            satirlar.append((kod, "ok", r))
+            print(f"[{idx}/{len(kodlar)}] {kod}: {r['islem_sayisi']} işlem, "
+                  f"mevduat-üstü ort %{_fmt(r['ort_mevduat_ustu'])}")
+        except Exception as e:
+            satirlar.append((kod, f"hata: {e}", None))
+            print(f"[{idx}/{len(kodlar)}] {kod}: HATA {e}")
+            traceback.print_exc()
+
+    # ── HAVUZ İSTATİSTİĞİ (asıl karar) ──
+    X = np.asarray(havuz_fazla, dtype=float)
+    N = int(X.size)
+    mu = float(np.mean(X)) if N else 0.0
+    sd = float(np.std(X, ddof=1)) if N > 1 else 0.0
+    t  = (mu / (sd / np.sqrt(N))) if (N > 1 and sd > 0) else 0.0
+    poz_oran = float(np.mean(X > 0) * 100) if N else 0.0
+    genel_basari = (tum_kazanan / tum_islem * 100) if tum_islem else 0.0
+
+    yeterli_n = N >= N_MIN
+    edge_var = yeterli_n and (mu > 0) and (t >= T_ESIK)
+    iyilesme = (mu > BASE_MU) and (t > BASE_T)
+
+    # ── RAPOR ──
+    L = []
+    L.append(f"# APEX — Dürüst Backtest Sonucu · {strateji_ad}")
+    L.append("")
+    L.append(f"_Üretim: {datetime.datetime.now():%Y-%m-%d %H:%M} · vade: {VADE_KEY} · "
+             f"komisyon dahil · karar eşiği: havuz t ≥ {T_ESIK} ve N ≥ {N_MIN}_")
+    L.append("")
+    L.append("## SORU: Strateji mevduatı GÜVENİLİR biçimde yeniyor mu?")
+    L.append("")
+    if not yeterli_n:
+        L.append(f"**KARAR VERİLEMEZ.** Toplam işlem N={N} < {N_MIN}. Hibrit eşiği ({STRATEJI}) çok seçici "
+                 f"olabilir — hibrit_analiz.py içindeki HIBRIT_ESIK'i düşür ya da geçmişi uzat.")
+    elif edge_var:
+        L.append(f"**ÖN ELEMEYİ GEÇTİ — ama kesin kanıt DEĞİL.** İşlem başına mevduat-üstü net getiri "
+                 f"ortalaması **%{_fmt(mu)}**, havuz t-istatistiği **{_fmt(t,1)}** (N={N}). "
+                 f"Mevduat-üstü fark pozitif yönde istatistiksel olarak ayırt ediliyor.")
+        L.append("")
+        L.append("> UYARI: t-istatistiği işlemleri bağımsız varsayar (aynı sembolde ardışık işlemler "
+                 "ilişkili olabilir → güveni bir miktar abartır) ve çoklu-test/seçim yanlılığını düzeltmez. "
+                 "ELEME sinyalidir, kanıt değil. Sonraki: out-of-sample + başka vadeler.")
+    else:
+        L.append(f"**HAYIR — kanıtlanmış edge YOK.** İşlem başına mevduat-üstü ortalama **%{_fmt(mu)}**, "
+                 f"havuz t-istatistiği **{_fmt(t,1)}** (N={N}). |t|, eşiğin ({T_ESIK}) altında → fark "
+                 f"gürültüden ayırt edilemiyor.")
+    L.append("")
+    L.append("### Saf teknik baseline'a göre")
+    yon = "İYİLEŞME" if iyilesme else "iyileşme YOK / kötüleşme"
+    L.append(f"- Teknik (önceki): mevduat-üstü %{_fmt(BASE_MU)}, t={_fmt(BASE_T,1)}, N={BASE_N}")
+    L.append(f"- Hibrit (bu koşu): mevduat-üstü %{_fmt(mu)}, t={_fmt(t,1)}, N={N}")
+    L.append(f"- **Yön: {yon}** (Δμ={_fmt(mu-BASE_MU)} puan, Δt={_fmt(t-BASE_T,1)})")
+    L.append("")
+    L.append(f"- Test edilen sembol: **{test_edilen}/{len(kodlar)}**")
+    L.append(f"- Toplam işlem (havuz N): **{N}**")
+    L.append(f"- Mevduat-üstü pozitif sembol: **{poz_sembol}/{test_edilen}** (yayılım)")
+    L.append(f"- Mevduatı geçen işlem oranı: **%{_fmt(poz_oran,1)}**")
+    L.append(f"- İşlem başı ort. mevduat-üstü net getiri: **%{_fmt(mu)}**")
+    L.append(f"- Havuz t-istatistiği: **{_fmt(t,1)}**  (karar eşiği {T_ESIK})")
+    L.append(f"- Genel başarı (kazanan/işlem): **%{_fmt(genel_basari,1)}**")
+    L.append("")
+    L.append("> Not (KARAR DIŞI): Tablodaki 'Yıllık%(ref)' nakit/boş zamanı saymaz → ŞİŞİK, karara girmez.")
+
+    # ── Sembol tablosu ──
+    L.append("")
+    L.append("## Hisse Bazında")
+    L.append("")
+    L.append("| Hisse | İşlem | Başarı% | Net% | Mevduat-üstü% | Yıllık%(ref) | M-üstü>0? |")
+    L.append("|---|---:|---:|---:|---:|---:|:--:|")
+
+    def _key(t3):
+        _, _, r = t3
+        return r["ort_mevduat_ustu"] if r else -1e9
+
+    for kod, durum, r in sorted(satirlar, key=_key, reverse=True):
+        if r is None:
+            L.append(f"| {kod} | – | – | – | – | – | _{durum}_ |")
+            continue
+        ok = "✓" if r.get("mevduati_yeniyor") else "✗"
+        L.append(f"| {kod} | {r['islem_sayisi']} | {_fmt(r['basari_pct'],1)} | "
+                 f"{_fmt(r['toplam_bilesik'])} | {_fmt(r['ort_mevduat_ustu'])} | "
+                 f"{_fmt(r['strateji_yillik'],1)} | {ok} |")
+
+    L.append("")
+    L.append("---")
+    L.append(f"*Strateji: {strateji_ad}. Hibrit = teknik tetik × makro/rejim × kurumsal birikim "
+             f"(fundamental canlı-only, backtest'te kapalı). Komisyon ~%0.4 gidiş-dönüş. Hedef/stop taban "
+             f"motordan aynen — tek değişken seçicilik. GERÇEK karar: havuz t-istatistiği.*")
+
+    metin = "\n".join(L)
+    with open("BACKTEST_SONUC.md", "w", encoding="utf-8") as f:
+        f.write(metin)
+    print("\n" + metin)
+    print("\n>>> BACKTEST_SONUC.md yazıldı.")
+
+
+if __name__ == "__main__":
+    calistir()
