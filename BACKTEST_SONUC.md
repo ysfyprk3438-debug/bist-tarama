@@ -1,22 +1,23 @@
-# APEX — Cross-Sectional Audit · Hep Yatırımda, Top-N Seçim
+# APEX — Rejim Tahsisi Audit · Hisse mi Mevduat mı, Ne Zaman?
 
-_Üretim: 2026-06-27 18:54 · 94 hisse · 3.6 yıl · top-12, ~21g dengeleme · maliyet: komisyon+slippage · leakage yok_
+_Üretim: 2026-06-27 19:24 · 94 hisse · 7.4 yıl · maliyet: komisyon+slippage · mevduat takvim-doğru · leakage yok_
 
-## Soru: Seçim, yatırımda kalarak XU100'ü yeniyor mu?
+## Soru: Rejim anahtarı HEM mevduatı HEM endeksi geçiyor mu?
 
-| Strateji | Son NAV (×) | Getiri% | Yıllık% | Sharpe | MaxDD% | XU100'ü geçti? |
-|---|---:|---:|---:|---:|---:|:--:|
-| Momentum (top-N) | 2.55 | 154.7 | 29.8 | 0.19 | -36.1 | ❌ |
-| Hibrit Sinyal (top-N) | 2.06 | 106.4 | 22.4 | -0.04 | -28.3 | ❌ |
-| _XU100 al-tut_ | 2.92 | 191.8 | 34.8 | 0.31 | -22.9 | — |
-| _Eşit-ağırlık TÜM al-tut_ | 2.72 | 172.4 | 32.2 | — | — | ❌ |
-| _Mevduat (~%45)_ | 3.79 | 279.5 | 45.0 | — | — | ✅ |
+| Strateji | Son NAV (×) | Getiri% | Yıllık% | Sharpe | MaxDD% | Mevduatı geçti? | Endeksi geçti? |
+|---|---:|---:|---:|---:|---:|:--:|:--:|
+| Rejim Anahtarı (MA200) | 9.90 | 890.4 | 36.5 | 0.36 | -22.3 | ❌ | ❌ |
+| Momentum (top-N) | 32.83 | 3183.5 | 60.6 | 0.83 | -49.8 | ✅ | ✅ |
+| Hibrit Sinyal (top-N) | 16.55 | 1554.7 | 46.3 | 0.61 | -32.4 | ✅ | ✅ |
+| _XU100 al-tut_ | 13.94 | 1294.5 | 43.0 | 0.53 | -31.8 | ❌ | — |
+| _Eşit-ağırlık TÜM_ | 25.30 | 2429.7 | 55.0 | — | — | ✅ | ✅ |
+| _Mevduat (~%45)_ | 15.46 | 1446.2 | 45.0 | — | — | — | ✅ |
 
 ## Karar
 
-**Hiçbir seçim XU100'ü geçemedi.** Bu evrende cross-sectional seçim de endeksi yenmiyor — muhtemelen hisseler fazla korele ve endeks birkaç dev hisseyle taşınıyor. Sonraki kaldıraç: (a) farklı faktör (değer/kalite/düşük-volatilite), (b) fundamental veri, ya da hedefi değiştir: 'endeksi yenmek' yerine 'benzer getiri + daha düşük MaxDD' (risk-ayarlı).
+**Rejim anahtarı mevduatı bile geçemedi** (NAV 9.90 < mevduat 15.46). Bu basit MA kuralı edge üretmiyor. Ama tabloda asıl mesaj: bu dönemde sabit mevduat çoğu şeyi yeniyorsa, dürüst ürün 'çoğunlukla mevduat, seçili fırsatta hisse' olabilir — ya da farklı rejim sinyali (faiz yönü, enflasyon, breadth) gerekiyor.
 
-> Sinyal scorer dengeleme başına ort. 3.2 hisse işaretledi (top-12 hedefi). 12'in altındaysa kalan ağırlık endekste tutuldu (hep yatırımda).
+> Rejim: 59 geçiş · %83 hissede. MA200 penceresi. Geçişte tek-yön sürtünme.
 
 ---
-*Hep %100 yatırımda. Komisyon %0.2+slippage %0.15 (tek yön, devirde). Skor t kapanışında, getiri t+1 — leakage yok.*
+*Mevduat takvim-günü doğru bileşik (hafta sonu dahil). Skor/karar t kapanışında, getiri t+1 — leakage yok.*
