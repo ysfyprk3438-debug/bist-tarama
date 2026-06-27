@@ -1,0 +1,26 @@
+name: Bundle Uygula
+on:
+  push:
+    paths: ['bundle.json']
+  workflow_dispatch: {}
+permissions:
+  contents: write
+jobs:
+  uygula:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Bundle'i uygula
+        run: |
+          python -c "import json,base64,os; d=json.load(open('bundle.json',encoding='utf-8')); [(os.makedirs(os.path.dirname(i['path']) or '.',exist_ok=True), open(i['path'],'wb').write(base64.b64decode(i['b64']))) for i in d.get('write',[])]; [os.remove(p) for p in d.get('delete',[]) if os.path.exists(p)]; json.dump({'applied':d.get('version',''),'write':[],'delete':[]},open('bundle.json','w',encoding='utf-8'),ensure_ascii=False,indent=2); print('UYGULANDI:',d.get('version','?'))"
+      - name: Kaydet
+        run: |
+          git config user.name "APEX Bundle"
+          git config user.email "bundle@apex.local"
+          git add -A
+          git commit -m "bundle uygulandi" || echo "degisiklik yok"
+          git push || echo "push yok"
