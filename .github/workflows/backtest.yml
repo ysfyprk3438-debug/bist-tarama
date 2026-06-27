@@ -1,6 +1,8 @@
 name: APEX Backtest
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "0 7 * * 1-5"   # her iş günü 07:00 UTC (10:00 TR) otomatik çalışır
 permissions:
   contents: write
 jobs:
@@ -16,13 +18,13 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install numpy pandas scikit-learn requests
-      - name: Backtest çalıştır
+      - name: APEX çalıştır
         run: python backtest_runner.py
       - name: Sonucu commit et
         run: |
           git config user.name "APEX Backtest"
           git config user.email "actions@github.com"
           git add -A
-          git commit -m "backtest: mevduat kiyasi" || echo "degisiklik yok"
+          git commit -m "apex: ileri gunluk guncelleme" || echo "degisiklik yok"
           git pull --rebase origin main
           git push
