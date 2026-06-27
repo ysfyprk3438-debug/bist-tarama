@@ -1,27 +1,21 @@
-# APEX — OECD Ayıklama Sondası
+# APEX — Risk Aracı Doğrulama (vol-hedefleme vaadi)
 
-_2026-06-27 22:56 · sayıyı çıkarabiliyor muyuz?_
+_2026-06-27 23:33 · XU100 · 8.0 yıl · haftalık rebalance_
 
-## Enflasyon (TR aylık YoY TÜFE) — ASIL TEST
+## Vol-hedefli portföy: bütçe vs GERÇEKLEŞEN MaxDD
 
-Durum 200 · JSON ✅ · ayıklama **çalıştı**:
+| DD bütçesi | Gerçekleşen MaxDD | Getiri (×) | Vaad tuttu mu? |
+|---|---:|---:|:--:|
+| %1.5 | %-0.3 | 5.75 | ✅ |
+| %5.0 | %-2.1 | 6.12 | ✅ |
+| %10.0 | %-5.1 | 6.66 | ✅ |
+| %20.0 | %-11.4 | 7.82 | ✅ |
 
-| Dönem | YoY % |
-|---|---:|
-| 2025-09 | 33.3 |
-| 2025-10 | 32.9 |
-| 2025-11 | 31.1 |
-| 2025-12 | 30.9 |
+_Referans — all-in hisse: MaxDD %-31.8 · getiri 15.91×_
 
-**Son: 2025-12 → %30.9** · ✅ makul aralıkta (gerçek YoY enflasyon, doğru seri)
+## Yorum
 
-## Faiz (TR kısa-vade) — ikincil, düzeltilmiş denemeler
+**Vol-hedefleme vaadini büyük ölçüde tuttu** — gerçekleşen MaxDD bütçelere yakın kaldı, all-in hisseye kıyasla düşüş ciddi şekilde kırpıldı. Risk aracı dürüst: söylediği bütçeyi kabaca teslim ediyor. k=2.5 makul.
 
-- ✅ STES IR3TIB: ayıklandı → 2026-03 = %35.5
-- ❌ MEI STINT: durum=None
-
-## Sonuç
-
-- Enflasyon ayıklaması ✅ + makul ise → otomasyonu logger'a bağlarız (enflasyon-oto + faiz-manuel hibrit).
-- Faiz denemelerinden biri ✅ ise bonus: onu da otomatiğe alırız.
-- Enflasyon ayıklaması bozuksa → format değişti, statik tablo + 10sn elle-ekle kalır (sistem zaten çalışıyor).
+---
+*Risk kontrolü testi (alfa değil). Vol 60g trailing, haftalık rebalance, mevduat zamana-göre faiz. Karar t, getiri t+1.*
