@@ -1,6 +1,6 @@
 # APEX — İleri Durum (Rejim Pusulası + Kağıt-Test)
 
-_Son güncelleme: 2026-06-27 23:25 · veri tarihi 2026-06-26_
+_Son güncelleme: 2026-06-27 23:39 · veri tarihi 2026-06-26_
 
 ## Bugünün duruşu
 
@@ -30,20 +30,21 @@ _(saf vol-hedef %2.1 × rejim tilt 0.5 · DD bütçesi %1.5)_
 
 ## İleri karne — 1 gündür biriken GERÇEK OOS
 
-| | Getiri |
+| Strateji | Getiri |
 |---|---:|
-| **Duruş stratejisi** | +0.1% |
+| **Risk-ölçekli (önerilen)** | +0.1% |
+| Duruş (ikili) | +0.1% |
 | Al-tut endeks | +0.1% |
 | Mevduat | +0.1% |
 
-_Şu ana dek önde: **Al-tut endeks**. Bu sayılar her koşuda, sadece geçmişte kaydedilen duruşlardan hesaplanır — geriye dönük düzeltme yok._
+_Şu ana dek önde: **Al-tut endeks**. Risk-ölçekli = her gün kaydedilen ağırlıkla; sadece geçmiş kararlardan hesaplanır, geriye dönük düzeltme yok._
 
 ## Günlük (2 kayıt)
 
-| Tarih | XU100 | Reel % | Duruş |
-|---|---:|---:|---|
-| 2026-06-25 | 14,260 | +4.5 | MEVDUAT LEHİNE |
-| 2026-06-26 | 14,274 | +4.5 | MEVDUAT LEHİNE |
+| Tarih | XU100 | Reel % | Duruş | Hisse % |
+|---|---:|---:|---|---:|
+| 2026-06-25 | 14,260 | +4.5 | MEVDUAT LEHİNE | 0.0 |
+| 2026-06-26 | 14,274 | +4.5 | MEVDUAT LEHİNE | 1.0 |
 
 ---
 *makro_veri.py çeyreklik statik tablodur; yeni PPK/TÜİK verisinde güncellenmeli. Duruş = reel faiz histerezisi (gir<-3, çık>+3, nötr→önceki).*
