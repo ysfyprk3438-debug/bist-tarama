@@ -1,34 +1,22 @@
-# APEX — Temel Faktör Doğrulama
+# APEX — Temel-Seçim Backtest (TTM ROE + kâr büyümesi)
 
-_2026-06-27 20:38 · temel_veri.py gerçek-veri testi_
+_2026-06-27 21:01 · 94 hisse · 7.2 yıl · top-12, çeyreklik · rank-normalize · point-in-time_
 
-## 1) Bugün itibarıyla temel faktörler (point-in-time)
+## Temel-seçim, momentum'un çöktüğü yerde (OOS) tutuyor mu?
 
-| Hisse | Tip | Net Kâr (küm.) | Özkaynak | ROE (küm.)% | YoY Kâr% |
-|---|---|---:|---:|---:|---:|
-| EREGL | sanayi | 0.41 mlr | 304.85 mlr | 0.1 | -9 |
-| GARAN | banka | 33.32 mlr | 451.32 mlr | 7.4 | 32 |
-| ASELS | sanayi | 5.55 mlr | 282.74 mlr | 2.0 | 99 |
-| THYAO | sanayi | 9.86 mlr | 966.36 mlr | 1.0 | — |
-| BIMAS | sanayi | 6.55 mlr | 190.79 mlr | 3.4 | 85 |
-| AKBNK | banka | 19.18 mlr | 302.60 mlr | 6.3 | 40 |
-| SISE | sanayi | 1.45 mlr | 286.04 mlr | 0.5 | -17 |
-| TUPRS | sanayi | 3.82 mlr | 360.08 mlr | 1.1 | 2,327 |
+| Dönem | Temel-Seçim | Momentum | Eşit-ağ. | Mevduat | Endeks | Temel>mev&end? |
+|---|---:|---:|---:|---:|---:|:--:|
+| İlk yarı (IS) | 10.19 | 15.87 | 12.53 | 3.79 | 5.11 | ✅ |
+| İkinci yarı (OOS) | 1.78 | 1.85 | 2.72 | 3.79 | 2.92 | ❌ |
+| TÜM dönem | 19.57 | 31.57 | 26.29 | 14.38 | 15.00 | ✅ |
 
-_8/8 hisse faktör üretti._
+_Temel-seçim TÜM dönem MaxDD: %-40.2_
 
-## 2) Point-in-time kanıtı — geçmiş tarihte de çalışıyor mu?
+## Karar
 
-Aynı hisse (EREGL), farklı tarihlerde o gün AÇIKLANMIŞ veriyle:
+**Temel-seçim de OOS'ta zayıf.** İlk yarıda iyi olsa bile yüksek-faiz yarısında mevduatı+endeksi geçemiyor. Demek bu rejimde tek başına temel-seçim de yetmiyor; ya değer/kalite faktörü eklenmeli ya da rejim-tahsisi (mevduat tabanı) ile birleştirilmeli.
 
-| Tarih | Açıklanmış son çeyrek | Net Kâr (küm.) | ROE% |
-|---|---|---:|---:|
-| 2022-06-01 | 2021/Q4 | 16.08 mlr | 19.0 |
-| 2023-06-01 | 2022/Q4 | 18.65 mlr | 15.7 |
-| 2024-06-01 | 2023/Q4 | 4.33 mlr | 2.3 |
-| 2025-06-01 | 2024/Q4 | 18.58 mlr | 5.8 |
-
-> Farklı tarihlerde farklı çeyrek/sayı görünüyorsa, geçmiş point-in-time çalışıyor demektir — temel-seçim backtest'i kurabiliriz.
+> Survivorship uyarısı sürüyor (bugünkü hisseler). Kesin yargı için delist'ler de gerek.
 
 ---
-*Sonraki: bu faktörlerle 94-hisse top-N temel-seçim backtest'i (OOS + maliyet + mevduat çıtası).*
+*TTM ROE + YoY büyüme, rank-normalize (aykırı dirençli). Maliyet komisyon+slippage. Faktör açıklanma-tarihinde, getiri sonrasında — leakage yok.*
