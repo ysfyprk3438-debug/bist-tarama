@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Sistem / geçici
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+
+# Ortam
+.venv/
+venv/
+.env
