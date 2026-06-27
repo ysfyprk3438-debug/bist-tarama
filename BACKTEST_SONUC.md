@@ -1,52 +1,19 @@
-# APEX — Sağlamlık Geçidi (rejimi KIRMA testi)
+# APEX — Makro Kaynak Sondası
 
-_2026-06-27 22:13 · XU100 · 8.0 yıl · brüt çarpan bazlı_
+_2026-06-27 22:49 · otomatik güncelleme için kaynak araması_
 
-## 1) Eşik taraması — edge tek noktada mı, her yerde mi?
+## 1-2) Dünya Bankası (keysiz, US-OK, ama yıllık+gecikmeli)
 
-| gir / çık | TÜM | OOS | mev(OOS) | end(OOS) | OOS geçti? |
-|---|---:|---:|---:|---:|:--:|
-| -1 / 1 | 21.74 | 6.53 | 3.01 | 5.84 | ✅ |
-| -1 / 3 | 21.93 | 6.53 | 3.01 | 5.84 | ✅ |
-| -1 / 5 | 20.39 | 5.97 | 3.01 | 5.84 | ✅ |
-| -3 / 1 | 18.72 | 6.53 | 3.01 | 5.84 | ✅ |
-| -3 / 3 | 20.63 | 6.53 | 3.01 | 5.84 | ✅ |
-| -3 / 5 | 19.18 | 5.97 | 3.01 | 5.84 | ✅ |
-| -5 / 1 | 14.09 | 6.53 | 3.01 | 5.84 | ✅ |
-| -5 / 3 | 14.09 | 6.53 | 3.01 | 5.84 | ✅ |
-| -5 / 5 | 13.10 | 5.97 | 3.01 | 5.84 | ✅ |
-| -8 / 1 | 14.09 | 6.53 | 3.01 | 5.84 | ✅ |
-| -8 / 3 | 14.09 | 6.53 | 3.01 | 5.84 | ✅ |
-| -8 / 5 | 13.10 | 5.97 | 3.01 | 5.84 | ✅ |
+- ❌ FP.CPI.TOTL.ZG: durum=None · HATA: TimeoutError: The read operation timed out
+- ❌ FR.INR.RINR: durum=None · HATA: TimeoutError: The read operation timed out
 
-**12 eşik kombinasyonunun 12'i OOS'ta mevduat+endeksi geçti.** Edge geniş eşik aralığında yaşıyor → kırılgan değil.
+## 3-4) OECD SDMX (keysiz, aylık olabilir)
 
-## 2) Gecikme stresi — makro veri geç gelirse?
+- ✅ TR aylık TÜFE: durum=200 · CT=application/vnd.sdmx.data+json; version=2; charset=utf-8 · gövde: «{"meta":{"schema":"https://raw.githubusercontent.com/sdmx-twg/sdmx-json/master/data-messag»
+- ❌ TR kısa-vade faiz: HATA: HTTPError: HTTP Error 422: Unprocessable Entity
 
-| lag (gün) | TÜM | OOS | OOS geçti? |
-|---|---:|---:|:--:|
-| 35 | 20.63 | 6.53 | ✅ |
-| 60 | 21.51 | 6.74 | ✅ |
-| 90 | 17.50 | 5.90 | ✅ |
+## Yorum
 
-**3 gecikme senaryosunun 3'i OOS'ta geçti.** 90 güne kadar gecikmeye dayanıklı.
-
-## 3) Plasebo — 2 geçiş + %56 hisse-süresi rastgele yerleşseydi?
-
-Gerçek rejim brüt: **20.63×** · 2 geçiş · %56 hissede
-
-| Plasebo | 4000 sahte ortalama | Gerçek yüzdelik |
-|---|---:|---:|
-| B: rastgele tek blok (D-E-D) | 19.77× | **%55.7** |
-| A: aylık rastgele (oran eşli) | 10.19× | **%97.4** |
-
-**Plasebo B yorumu:** gerçek rejim ortalarda → zamanlama şanstan ayırt edilemiyor (kötü işaret).
-
-## Geçit Kararı (dereceli)
-
-Eşik sağlamlığı: %100 · Gecikme sağlamlığı: %100 · Plasebo-B ayrışması: yok
-
-**Rejim eşik+gecikmeye dayanıklı ama plasebodan net ayrışmıyor.** Mekanizma sağlam, ama 2 geçişin tam yeri kısmen şans olabilir. Mantıklı sonuç: ileri teste değer, ama tek başına 'kanıt' sayma — hissedeyken seçim ekleyip (momentum/temel) plasebo ayrışmasını güçlendirmeyi dene.
-
----
-*Brüt çarpan bazlı (zamanlama becerisini izole etmek için sürtünme hariç; gerçek rejim 2 geçişte sürtünme ihmal edilebilir). Karar t, getiri t+1; enflasyon lag'li — leakage yok.*
+- Dünya Bankası ✅ ama YILLIK → çeyreklik rejim için fazla kaba/gecikmeli (tek başına yetmez).
+- OECD ✅ + JSON ise → aylık TÜFE & faiz otomasyonun çekirdeği olabilir.
+- Hepsi ❌/⚠️ ise → güvenilir US-kaynak yok; otomasyon yerine **10 saniyelik güvenli elle-ekle + tazelik hatırlatıcısı** doğru tasarım (sessiz-hata riski yok).
