@@ -20,7 +20,7 @@ import json, datetime, math, pathlib
 import numpy as np
 
 OUT = "apex.html"
-SURUM = "v2.3"
+SURUM = "v2.4"
 TAHMIN_TAVAN = 40.0
 ATR_K_STOP = 2.0
 ATR_K_HEDEF = 3.0
@@ -643,11 +643,12 @@ def run_streamlit():
     html,data=build_html(veri=_veri())
     components.html(html,height=1180,scrolling=True)
 
-    with st.expander("\U0001F4CB Raporu gor / indir"):
-        st.markdown(rapor_md(data))
-        st.download_button("Raporu indir (.md)", data=rapor_md(data),
-                           file_name="apex_rapor_{}.md".format(data.get("uretildi","")),
-                           mime="text/markdown", use_container_width=True)
+    with st.expander("\U0001F4CB Raporu gor"):
+        _rap=rapor_md(data)
+        st.markdown(_rap)
+        st.caption("Kaydetmek istersen asagidaki metni uzun bas \u2192 kopyala. (Dosya indirme iOS'ta "
+                   "tam ekran acip kapatma vermedigi icin kaldirildi.)")
+        st.code(_rap, language="markdown")
 
     # ---- KARAR CERCEVESI (interaktif — native) ----
     st.markdown("---")
@@ -666,7 +667,7 @@ def run_streamlit():
         c1,c2,c3=st.columns(3)
         c1.metric("Mevcut fiyat","\u20BA{}".format(px))
         c2.metric("Yillik oynaklik","%{}".format(sec.get("vol","-")))
-        c3.metric("Rejim duruse",data["rejim"]["durus"].split()[0].title())
+        c3.metric("Rejim",{"mevduat":"Mevduat","hisse":"Hisse","notr":"Notr"}.get(data["rejim"]["lehte"],"-"))
         cc1,cc2=st.columns(2)
         sermaye=cc1.number_input("Sermayen (\u20BA)",min_value=1000.0,value=100000.0,step=1000.0,key="kc_sermaye")
         entry=cc2.number_input("Dusundugun giris fiyati (\u20BA)",min_value=0.0,value=float(px),step=0.01,key="kc_entry")
