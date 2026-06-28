@@ -2,111 +2,106 @@
 ═══════════════════════════════════════════════════════════════
 ║                                                               ║
 ║   📍 APEX — DURUM PANOSU                                       ║
-║   BURADAYIZ. Yeni oturumda ÖNCE BUNU OKU.                     ║
+║   BURADAYIZ. Yeni oturumda ÖNCE BUNU OKU, sonra yol_haritasi. ║
 ║                                                               ║
 ═══════════════════════════════════════════════════════════════
 
 Bu dosya projenin KONTROL NOKTASIDIR.
-Yeni bir sohbete başlarken önce bunu oku → tüm bağlamı al.
+Her geliştirme oturumunun SONUNDA güncellenir.
+Yeni sohbete başlarken Claude önce bunu okur → bağlamı alır.
 
-⚠️ GELECEK OTURUM İÇİN EN ÖNEMLİ UYARI:
-Bu projede getiri-tahmin edge'i AVI RİGORLU OLARAK YAPILDI VE KAPANDI.
-"Hadi bir strateji daha deneyelim" tuzağına DÜŞME. Aşağıdaki TEMEL_BULGU'ya bak.
-Yeni backtest = daha fazla overfitting. Asıl iş artık kod değil, SABIR (ileri test).
+Repo: ysfyprk3438-debug/bist-tarama  (branch: main)
+Canlı kod: TEK DOSYA app.py  (Streamlit Cloud)
 """
-
-SURUM = "v5.0 — APEX Dürüst Çekirdek"
-SON_GUNCELLEME = "28 Haz 2026: edge avı dürüstçe kapandı; risk + ileri-test ürünü canlıya alındı"
-
-# ══════════════════════════════════════════════════════════════
-# TEMEL BULGU (bu gecenin özü — her şeyin dayandığı gerçek)
-# ══════════════════════════════════════════════════════════════
-TEMEL_BULGU = {
-    "soru": "15dk gecikmeli perakende BIST verisiyle mevduatı yenecek kanıtlanmış getiri-edge'i var mı?",
-    "cevap": "HAYIR. 6 strateji ailesi (çok-vade, kesitsel seçim, momentum, MA200 rejim, "
-             "temel-analiz, makro reel-faiz zamanlaması) sert testlerden geçirildi; hepsi düştü.",
-    "en_sert_test": "Makro reel-faiz rejimi eşik+gecikme testlerine dayandı AMA plasebo B'de çöktü "
-                    "(gerçek %55.7 yüzdelik = medyan). Mevduatı geçen şey zamanlama becerisi değil, "
-                    "yükselen 8 yılda uzun hisse maruziyeti (beta, alfa kılığında).",
-    "ayakta_kalan": "RİSK KONTROLÜ. Vol-hedefleme gerçek BIST'te doğrulandı: gerçekleşen MaxDD her "
-                    "bütçenin altında (1.5→0.3, 5→2.1, 10→5.1, 20→11.4), all-in'in -%31.8'ini tek haneye kırptı.",
-    "ders": "Getiri kehaneti ulaşılamaz; risk yönetimi ulaşılabilir. APEX'in değer ekseni budur.",
-}
 
 # ══════════════════════════════════════════════════════════════
 # ŞU AN NEREDEYİZ
 # ══════════════════════════════════════════════════════════════
+SURUM = "app.py v2.5"
+SON_GUNCELLEME = "Tek dosya kurumsal 'ölçüm aleti' arayüzü — Monte Carlo (#15) kapandı"
+
 SU_AN = {
-    "asama": "CANLI — sistem her iş günü kendi kendine çalışıyor, gerçek ileri-test biriktiriyor",
-    "siradaki_adim": "KOD DEĞİL, SABIR. Karne haftalarca dolsun. Tek gerçek doğrulama ileri test.",
-    "bekleyen_karar": "Yok. Sistem tam ve çalışıyor.",
-    "onemli_not": "Bu çekirdek dürüsttür — her ekranda kendi sınırını söyler ('kâhin değil, risk-farkında temkin').",
+    "asama": "Canlı ve çalışıyor. app.py tek dosya, kendi HTML'ini taşıyor "
+             "(artık apex_omurga_v1.html şablonuna bağımlı DEĞİL).",
+    "siradaki_adim": "Risk Parity (#12) — bir sonraki yeşil aday.",
+    "bekleyen_karar": "Yok.",
+    "durustluk_cizgisi": "KORUNDU. Getiri tahmini ~yazı-tura, kanıtlanmış edge YOK. "
+                         "Canlı veri yoksa fiyat UYDURULMAZ. Yön tahmini reddedildi "
+                         "('akıllı para → seviye kırar' tipi drift KABUL EDİLMEDİ).",
 }
 
 # ══════════════════════════════════════════════════════════════
-# CANLI ÇEKİRDEK (şu an çalışan sistem — bunlara dokunurken dikkat)
+# CANLI ARAYÜZ (app.py v2.5 — ne var)
 # ══════════════════════════════════════════════════════════════
-CANLI_DOSYALAR = [
-    "backtest_runner.py — CANLI LOGGER (ileri_gunluk.py içeriği). Workflow bunu çalıştırır.",
-    "ileri_gunluk.py    — logger kaynağı: rejim+pozisyon hesaplar, karne kurar, Telegram atar",
-    "makro_veri.py      — statik çeyreklik faiz+enflasyon tablosu (TEMEL, elle güncellenir)",
-    "makro_oto.py       — OECD'den enflasyon+faiz oto-besleme; statiğe fallback; statik öncelikli",
-    "pozisyon.py        — vol-hedefli risk-ölçekleme (DD bütçesi→hisse ağırlığı, k=2.5)",
-    "bildirim.py        — Telegram göndericisi (secrets: TELEGRAM_TOKEN + TELEGRAM_CHAT_ID)",
-    "veri.py            — XU100 veri çekme (Yahoo→İş Yatırım fallback) [eski projeden, hâlâ kullanılır]",
-    "ILERI_DURUM.md     — ÇIKTI: günlük duruş + risk pozisyonu + 4-çizgi karne (oku-panosu)",
-    "ileri_gunluk.csv   — ÇIKTI: ham günlük kayıt (tarih,xu100,reel,durus,agirlik) — ileri-test verisi",
-    ".github/workflows/backtest.yml — cron (her iş günü 07:00 UTC) + git add -A + Telegram env",
+ARAYUZ = [
+    "Güven Kerterizi kadranı — başlık metriği 'sisteme ne kadar güvenmeli', sahte güven skoru değil.",
+    "Havuz tablosu — taranan hisseler.",
+    "Hisse Detay — üç sekme: Teknik / Bağlam / Sicil.",
+    "Kesişim: MA50/MA200 altın/ölüm grafikte işaretli + 'N gün önce' + dürüst post-kesişim medyanı.",
+    "  → Veri 2 yıl çekiliyor, grafik son 1 yılı gösteriyor.",
+    "Karar Çerçevesi: seçim KULLANICIDA. Sistem verir: poz büyüklüğü + ATR stop + "
+    "riskteki para + R/Ödül + senaryo. Cevap 'ne kadar / nereye kadar', 'AL' DEĞİL.",
+    "Monte Carlo: yönsüz (drift=0) belirsizlik konisi + stop'a değme olasılığı. "
+    "Kehanet değil — belirsizliğin genişliği.",
 ]
 
 # ══════════════════════════════════════════════════════════════
-# ESKİ / TERK EDİLMİŞ (edge-avı dönemi — artık aktif DEĞİL, silinebilir)
+# SON OTURUMDA NE YAPTIK (en yeni üstte)
 # ══════════════════════════════════════════════════════════════
-ESKI_DOSYALAR = (
-    "robot.py, karar.py, niyet.py, gecmis.py, piyasa.py, ruzgar.py, performans.py, grafik.py, "
-    "alarm.py, volatilite.py, karakter.py, hacim.py, zaman.py, izleme.py, strateji.py, radar.py, "
-    "genislik.py, psikoloji.py, seffaflik.py, kalibrasyon.py, ai_model.py, fibonacci.py, analiz.py, "
-    "tarama_core.py, app.py, arayuz.py, cuzdan.py, backtest.py — eski Streamlit/robot mimarisi. "
-    "Bunların ürettiği teknik/momentum/temel sinyaller rigorlu testte mevduata yenildi. "
-    "Referans için durabilir ama CANLI yola bağlı değiller."
-)
-
-# ══════════════════════════════════════════════════════════════
-# BAKIM (yavaş, küçük işler)
-# ══════════════════════════════════════════════════════════════
-BAKIM = [
-    "makro_veri.py: yeni PPK faiz kararı / TÜİK enflasyonu çıkınca MAKRO tablosuna bir çeyrek ekle. "
-    "Eklemezsen OECD birkaç ay gecikmeyle devralır; sistem durmaz.",
-    "Karne: birkaç hafta sonra 4 çizginin (risk-ölçekli/duruş/endeks/mevduat) ayrışmasına bak.",
-    "Cron: günlük commit repo'yu aktif tutar → GitHub 60-gün durdurma kuralı tetiklenmez.",
-    "Güvenlik: BotFather token'ı sohbette geçti — ciddi kullanımda /revoke ile yenile.",
-    "Temizlik: telegram_test.py ölü (silinebilir). .gitignore __pycache__'i durdurur.",
+GECMIS_OTURUMLAR = [
+    "#15 Monte Carlo kapandı: yönsüz belirsizlik konisi + stop'a değme olasılığı.",
+    "#10 kapandı: delisted temizliği + projektör koruma kabuğu.",
+    "app.py v1.9 → v2.5: tek dosyaya taşındı, kendi HTML'ini içinde taşıyor.",
+    "Kurumsal 'ölçüm aleti' arayüzü: Güven Kerterizi + Havuz + Detay(Teknik/Bağlam/Sicil).",
+    "Kesişim grafiği: altın/ölüm işareti + 'N gün önce' + post-kesişim medyanı; veri 2 yıl, grafik 1 yıl.",
+    "Karar Çerçevesi: poz/stop/riskteki para/R-Ödül/senaryo — 'AL' demeyen yapı.",
+    # --- daha eski (önceki mimari, arşiv) ---
+    "Doğrulanmış varlık: pozisyon vol-target — gerçek BIST'te MaxDD bütçe altında kaldı.",
+    "Honest core: hiçbir strateji OOS'ta mevduatı geçemedi; makro rejim placebo'da çöktü (beta).",
 ]
 
 # ══════════════════════════════════════════════════════════════
-# SONRAKİ (eğer gerçekten bir şey eklenecekse — sırayla, yorgunken DEĞİL)
+# İŞ KUYRUĞU (numaralı)
 # ══════════════════════════════════════════════════════════════
-SONRAKI_HEDEF = (
-    "Önce ileri test birikecek (takvim işi). Sonra OPSİYONEL, hepsi dürüst kalmak şartıyla: "
-    "(1) DD bütçesini ayarlanabilir yap. (2) Karne yeterince dolunca risk-ölçekli stratejinin "
-    "gerçek ileri-Sharpe'ını ölç. (3) makro_oto faiz vekilini (IR3TIB) politika faizine kalibre et. "
-    "ASLA: yeni getiri-stratejisi backtest'i — o soru kapandı, cevabı TEMEL_BULGU'da."
-)
+IS_KUYRUGU = [
+    "#10  Delisted temizliği + projektör koruma kabuğu          → KAPANDI ✓",
+    "#15  Monte Carlo (yönsüz belirsizlik konisi)               → KAPANDI ✓",
+    "#12  Risk Parity                                           → SIRADAKİ yeşil aday",
+    "ForInvest AKD/takas manuel görsel arşivi                   → bekliyor",
+    "İleri-test (paper) birikimi — tek dürüst OOS               → sürüyor",
+]
+
+# ══════════════════════════════════════════════════════════════
+# DEPLOY (değişmeyen kural)
+# ══════════════════════════════════════════════════════════════
+DEPLOY = [
+    "Tek kaynak: GitHub repo ysfyprk3438-debug/bist-tarama, main. Gevşek dosya yükleme YOK.",
+    "Canlı kod tek dosya: app.py. GitHub web editör → app.py → Edit → Ctrl+A → sil → yapıştır → Commit.",
+    "Streamlit Cloud otomatik redeploy eder.",
+    ".github/workflows/ altına token YAZAMAZ → workflow dosyalarını Yusuf web UI'dan elle açar.",
+]
+
+# ══════════════════════════════════════════════════════════════
+# DEĞİŞMEZ İLKELER (dürüstlük çizgisi)
+# ══════════════════════════════════════════════════════════════
+ILKELER = [
+    "Başlık metriği = 'ne kadar güvenmeli', sahte güven değil.",
+    "Getiri tahmini ~yazı-tura; kanıtlanmış edge yok. Risk yönetimi çözülebilir problem.",
+    "Canlı veri yoksa fiyat uydurulmaz.",
+    "Yön tahmini (drift) reddedildi — Monte Carlo yönsüz.",
+    "Dürüst ≠ seyrek: gerçek tarihsel veri hem dürüst hem zengindir.",
+]
 
 
 def durum_metni():
-    s = ["📍 APEX — DURUM", "=" * 50]
-    s.append(f"\nSÜRÜM: {SURUM}\n{SON_GUNCELLEME}")
-    s.append(f"\n── TEMEL BULGU ──\n{TEMEL_BULGU['soru']}\n→ {TEMEL_BULGU['cevap']}\n"
-             f"Ayakta kalan: {TEMEL_BULGU['ayakta_kalan']}\nDers: {TEMEL_BULGU['ders']}")
-    s.append(f"\nŞU AN: {SU_AN['asama']}\nSIRADAKİ: {SU_AN['siradaki_adim']}")
-    s.append("\n── CANLI ÇEKİRDEK ──")
-    for d in CANLI_DOSYALAR:
-        s.append(f"  {d}")
-    s.append(f"\n── BAKIM ──")
-    for b in BAKIM:
-        s.append(f"  • {b}")
-    s.append(f"\nSONRAKİ:\n  {SONRAKI_HEDEF}")
+    s = ["📍 APEX — DURUM", "=" * 45]
+    s.append(f"\nSÜRÜM: {SURUM} — {SON_GUNCELLEME}")
+    s.append(f"\nŞU AN: {SU_AN['asama']}")
+    s.append(f"SIRADAKİ: {SU_AN['siradaki_adim']}")
+    s.append(f"\nDÜRÜSTLÜK ÇİZGİSİ:\n  {SU_AN['durustluk_cizgisi']}")
+    s.append("\nİŞ KUYRUĞU:")
+    for a in IS_KUYRUGU:
+        s.append(f"  {a}")
     return "\n".join(s)
 
 
