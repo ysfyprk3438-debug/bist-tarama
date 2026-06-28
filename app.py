@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-APEX — v1.1 · GERCEK VERI
-Duzeltme: durustluk != bosluk. Zenginlik GERCEK GECMISTEN gelir.
-- Tum BIST listesi (sahte 2 hisse degil)
-- Gercek fiyat + MA50/MA200 grafigi (her hissenin detayinda)
+APEX — v1.2 · GERCEK VERI · HISSE-BASI VOL-TARGET
+Duzeltme (v1.2): "Risk %6.5" her hissede ayniydi -> her hissenin KENDI vol'una gore
+hisse-basi vol-target pozisyon agirligi. Rozet etiketi "Risk" -> "Poz".
+- Tum BIST listesi
+- Gercek fiyat + MA50/MA200 grafigi
 - Gunun kazananlari = GERCEK (olgu, damgasiz)
 - Tahmin listesi = seffaf proxy + sicil DAMGASI (~ yazi-tura)
 - Rejim/risk/merkez = canli veri gerektirmeyen durust cekirdek
@@ -44,10 +45,12 @@ def rejim_hesapla(bugun):
     return {"politika":pol,"enflasyon":enf,"reel":reel,"durus":durus,"lehte":lehte}
 
 def risk_pozisyon(lehte,dd=0.015,k=2.5,vol=0.29):
+    # vol = ILGILI HISSENIN yillik oynakligi (artik global sabit degil)
+    vol=max(float(vol),0.12)          # taban: dejenere %100 agirligi onler
     hv=dd*k; a=hv/vol
     if lehte=="mevduat": a*=0.5
     a=max(0,min(1,a))
-    return {"agirlik_pct":round(a*100,1),"mevduat_pct":round((1-a)*100,1),"dd_butce_pct":dd*100,"k":k}
+    return {"agirlik_pct":round(a*100,1),"mevduat_pct":round((1-a)*100,1),"dd_butce_pct":dd*100,"k":k,"vol_pct":round(vol*100,0)}
 
 def merkez_ve_ajanlar(rej,n_gun):
     g,r,rp=0.49,0.92,0.60
@@ -80,6 +83,15 @@ def downsample(a,m=90):
     idx=np.linspace(0,len(a)-1,m).astype(int)
     return [round(float(a[i]),2) for i in idx]
 
+def yillik_vol(c):
+    # Hisse-basi yillik oynaklik: son ~63 gunun log-getirilerinden
+    c=np.asarray(c,float)
+    seg=c[-64:] if len(c)>=64 else c
+    if len(seg)<6: return 0.29
+    r=np.diff(np.log(seg))
+    if len(r)<5 or np.std(r)<1e-9: return 0.29
+    return float(np.std(r)*math.sqrt(252))
+
 def fetch_bist():
     try:
         import yfinance as yf
@@ -97,8 +109,10 @@ def fetch_bist():
             px=float(c[-1]); prev=float(c[-2]); ch=round((px/prev-1)*100,1)
             ay3=round((px/float(c[-63])-1)*100,1) if len(c)>=63 else None
             lo=float(np.min(c[-60:])); hi=float(np.max(c[-60:]))
+            vol=yillik_vol(c)                       # <-- HISSE-BASI OYNAKLIK
             out[s]={"px":round(px,2),"ch":ch,"hist":downsample(c),"ma50":downsample(ma(c,50)),
-                    "ma200":downsample(ma(c,200)),"rsi":rsi(c),"destek":round(lo,2),"direnc":round(hi,2),"ay3":ay3}
+                    "ma200":downsample(ma(c,200)),"rsi":rsi(c),"destek":round(lo,2),"direnc":round(hi,2),
+                    "ay3":ay3,"vol":round(vol,3)}
         except Exception:
             continue
     return out
@@ -117,11 +131,16 @@ def build_app_data(bugun=None, veri=None):
         if d:
             hedef=d["direnc"]; stop=d["destek"]
             rr=round(abs((hedef-d["px"])/((d["px"]-stop) or 1)),1) if d["px"] else 0
+            svol=d.get("vol") or 0.29
+            rp_h=risk_pozisyon(rej["lehte"],vol=svol)        # <-- HISSE-BASI VOL-TARGET
             base.update({"px":d["px"],"ch":d["ch"],"hist":d["hist"],"ma50":d["ma50"],"ma200":d["ma200"],
                          "rsi":d["rsi"] or "-","destek":d["destek"],"direnc":d["direnc"],"hedef":hedef,"stop":stop,
                          "rr":rr,"ay3":d["ay3"] if d["ay3"] is not None else "-","dec":"IZLE","dcol":"blue",
-                         "miniag":[["\U0001F9ED Rejim",rej['lehte'][:4],"m"],["\U0001F6E1\uFE0F Risk","%{}".format(risk['agirlik_pct']),"m"],
-                                   ["\U0001F4C8 Getiri","%{}".format(sicil),"dn" if sicil<=51 else "or"],["\U0001F3AF Denetci","dusur","pu"]]})
+                         "vol":rp_h["vol_pct"],"poz":rp_h["agirlik_pct"],
+                         "miniag":[["\U0001F9ED Rejim",rej['lehte'][:4],"m"],
+                                   ["\U0001F6E1\uFE0F Poz","%{}".format(rp_h['agirlik_pct']),"m"],
+                                   ["\U0001F4C8 Getiri","%{}".format(sicil),"dn" if sicil<=51 else "or"],
+                                   ["\U0001F3AF Denetci","dusur","pu"]]})
         else:
             base.update({"px":"-","ch":0,"hist":[],"ma50":[],"ma200":[],"rsi":"-","destek":"-","direnc":"-",
                          "hedef":"-","stop":"-","rr":"-","ay3":"-","dec":"VERI YOK","dcol":"m",
@@ -162,8 +181,8 @@ def run_streamlit():
         st.warning("Canli veri cekilemedi - liste gorunur ama fiyat/grafik icin yfinance + internet gerekli. requirements.txt'e yfinance ekli mi?")
     with st.expander("Durustluk . sayilar nereden?"):
         st.write("{} hisse listede . {} tanesi canli veriyle dolu.".format(len(data['stocks']),n))
-        st.write("Rejim reel %{} -> {}. Risk hisse %{}. Merkez {}/100.".format(
-            data['rejim']['reel'],data['rejim']['durus'],data['risk']['agirlik_pct'],data['master']['skor']))
+        st.write("Rejim reel %{} -> {}. Poz rozeti artik HISSE-BASI vol-target. Merkez {}/100.".format(
+            data['rejim']['reel'],data['rejim']['durus'],data['master']['skor']))
 
 import sys as _sys
 if "streamlit" in _sys.modules:
