@@ -20,7 +20,7 @@ import json, datetime, math, pathlib
 import numpy as np
 
 OUT = "apex.html"
-SURUM = "v2.4"
+SURUM = "v2.5"
 TAHMIN_TAVAN = 40.0
 ATR_K_STOP = 2.0
 ATR_K_HEDEF = 3.0
@@ -224,6 +224,27 @@ def senaryo_cerceve(px, hedef, vol_pct, atr):
     yon=("Hedef mevcut fiyatin USTUNDE" if fark>0.5 else ("Hedef mevcut fiyatin ALTINDA" if fark<-0.5 else "Hedef mevcut fiyata ~esit"))
     return {"fark":round(fark,1),"yil_oran":round(yil_oran,2),"gun":(round(gun) if gun else None),
             "sigma_pct":round(sigma*100),"buyukluk":buyukluk,"bnot":bnot,"yon":yon}
+
+def monte_carlo(entry, vol_pct, gun=20, n=4000, stop=None, hedef=None, seed=42):
+    """DURUST Monte Carlo = belirsizlik konisi, KEHANET DEGIL.
+    Hissenin KENDI oynakligiyla, YONSUZ (drift=0) binlerce yol simule eder.
+    Cikti: gun sonundaki fiyat dagiliminin %5/%50/%95 yuzdelikleri (medyan ~ bugun,
+    cunku yon tahmini YOK) + salt-gurultuyle stop/hedefe degme olasiligi (yonsuz).
+    Yon/al-sat URETMEZ; sadece belirsizligin GENISLIGINI olcer."""
+    if not entry or entry<=0 or not vol_pct: return None
+    sig=max(float(vol_pct)/100.0,0.05)/math.sqrt(252.0)
+    rng=np.random.default_rng(seed)
+    shocks=rng.normal(0.0,sig,size=(int(n),int(gun)))      # drift=0: yon yok
+    paths=float(entry)*np.exp(np.cumsum(shocks,axis=1))
+    son=paths[:,-1]
+    p5,p50,p95=[float(x) for x in np.percentile(son,[5,50,95])]
+    res={"gun":int(gun),"p5":round(p5,2),"p50":round(p50,2),"p95":round(p95,2),
+         "band_ust":round((p95/entry-1)*100,1),"band_alt":round((p5/entry-1)*100,1)}
+    if stop and stop<entry:
+        res["stop_deg"]=int(round(float(np.mean(np.min(paths,axis=1)<=stop))*100))
+    if hedef and hedef>entry:
+        res["hedef_deg"]=int(round(float(np.mean(np.max(paths,axis=1)>=hedef))*100))
+    return res
 
 def karar_cercevesi(entry, hedef, vol_pct, atr, sermaye, lehte, teknik_hedef=None):
     """SEC kararini (kullanici verdi) OLCULU plana cevirir. AL-SAT URETMEZ.
@@ -674,6 +695,8 @@ def run_streamlit():
         hedef=st.number_input("Analist hedefi — istege bagli (ForInvest'te gordugun, \u20BA)",
                               min_value=0.0,value=0.0,step=0.01,key="kc_hedef",
                               help="0 birakirsan senaryo bolumu atlanir.")
+        ufuk=st.radio("Belirsizlik ufku (Monte Carlo)",[10,20,60],index=1,horizontal=True,key="kc_ufuk",
+                      format_func=lambda g:"{} gun".format(g))
         if st.button("Karar cercevesini cikar",key="kc_btn",use_container_width=True):
             k=karar_cercevesi(float(entry),float(hedef),sec.get("vol"),sec.get("atr"),
                               float(sermaye),data["rejim"]["lehte"],teknik_hedef=sec.get("hedef"))
@@ -697,8 +720,27 @@ def run_streamlit():
                     c=k["senaryo"]
                     st.markdown("**Analist hedefi cercevesi:** {} mesafe — {}: %{:+}".format(c["buyukluk"],c["yon"],c["fark"]))
                     st.caption("Mesafe, hissenin ~1 yillik oynakliginin (%{}) {}x'i. {}".format(c["sigma_pct"],c["yil_oran"],c["bnot"]))
+                mc=monte_carlo(float(entry),sec.get("vol"),gun=int(ufuk),
+                               stop=k["stop"],hedef=(float(hedef) if hedef and float(hedef)>0 else None))
+                if mc:
+                    st.markdown("#### Belirsizlik konisi · {} gun (Monte Carlo)".format(mc["gun"]))
+                    b1,b2,b3=st.columns(3)
+                    b1.metric("Alt (%5)","\u20BA{}".format(mc["p5"]),delta="%{}".format(mc["band_alt"]),delta_color="off")
+                    b2.metric("Medyan (%50)","\u20BA{}".format(mc["p50"]),help="~ bugun: yon tahmini YOK")
+                    b3.metric("Ust (%95)","\u20BA{}".format(mc["p95"]),delta="%+{}".format(mc["band_ust"]),delta_color="off")
+                    st.caption("{} gun sonra, salt oynaklikla fiyat ~%90 ihtimalle bu bantta olabilir. "
+                               "Medyan bugune yakin cunku YON tahmini yok — bu kehanet degil, belirsizligin GENISLIGI."
+                               .format(mc["gun"]))
+                    if "stop_deg" in mc:
+                        uyari=" \u2014 stop gurultunun icinde, erken tetiklenebilir." if mc["stop_deg"]>=50 else ""
+                        st.write("Salt gurultuyle (yonsuz) **stop'a degme**: ~%{}{}".format(mc["stop_deg"],uyari))
+                    if "hedef_deg" in mc:
+                        st.write("Salt gurultuyle (yonsuz) **hedefe degme**: ~%{}".format(mc["hedef_deg"]))
+                    if ("stop_deg" in mc) and ("hedef_deg" in mc):
+                        st.caption("Iki olasilik benzerse: oynaklik simetrik, EDGE YOK. Bu sayilar yon SOYLEMEZ; "
+                                   "tek faydasi stop'unun normal dalgalanmanin icinde olup olmadigini gormek.")
                 st.info("Sistemin sana SOYLEMEDIGI: bu hisse cikar mi (~yazi-tura, edge yok). SOYLEDIGI: "
-                        "ne kadar koy ve nerede dur. Secim + katalizor sende.")
+                        "ne kadar koy, nerede dur, belirsizlik ne kadar genis. Secim + katalizor sende.")
     with st.expander("Durustluk · sayilar nereden? ({})".format(SURUM)):
         st.write("{} hisse listede · {} tanesi canli veriyle dolu.".format(len(data['stocks']),data['n_veri']))
         st.write("Guven kerterizi amber cunku getiri ekseni ~yazi-tura. Poz = hisse-basi vol-target. "
