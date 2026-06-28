@@ -1,35 +1,31 @@
-"""
-APEX · TELEGRAM BİLDİRİM — günlük duruş + önerilen pozisyonu telefona yollar.
-Token/chat yoksa SESSİZCE atlar (logger asla bozulmaz). Secrets:
-  TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID  (GitHub repo Secrets → workflow env ile geçilir).
-"""
-import os, json, urllib.request
+"""APEX · TELEGRAM TEST — secrets→env→bot→telefon borusunu anında doğrular.
+Telefona test mesajı atar; atamazsa NEDENİNİ BACKTEST_SONUC.md'ye yazar."""
+import os, json, urllib.request, datetime
 
+tok = os.environ.get("TELEGRAM_TOKEN") or os.environ.get("TELEGRAM_BOT_TOKEN")
+chat = os.environ.get("TELEGRAM_CHAT_ID")
+L = ["# APEX — Telegram Test", "", f"_{datetime.datetime.now():%Y-%m-%d %H:%M}_", ""]
+L.append(f"- TELEGRAM_TOKEN: {'VAR ('+str(len(tok))+' karakter)' if tok else '**YOK**'}")
+L.append(f"- TELEGRAM_CHAT_ID: {'VAR ('+chat+')' if chat else '**YOK**'}")
 
-def gonder(metin):
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    chat = os.environ.get("TELEGRAM_CHAT_ID")
-    if not token or not chat:
-        return False  # kurulmamış → sessiz no-op
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    veri = json.dumps({"chat_id": chat, "text": metin, "parse_mode": "Markdown",
-                       "disable_web_page_preview": True}).encode("utf-8")
+sonuc = "denenmedi"
+if tok and chat:
+    url = f"https://api.telegram.org/bot{tok}/sendMessage"
+    veri = json.dumps({"chat_id": chat,
+                       "text": "✅ APEX test mesajı — boru çalışıyor. Artık her iş günü duruş+pozisyon buraya düşecek."}).encode()
     try:
         req = urllib.request.Request(url, data=veri, headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=15) as r:
-            return r.status == 200
-    except Exception:
-        return False
-
-
-def mesaj_kur(tarih, durus, reel, pol, enf, w, yvol):
-    return (f"*APEX · {tarih}*\n"
-            f"Reel faiz: %{reel:+.1f}  (pol %{pol:.1f} − enf %{enf:.1f})\n"
-            f"Duruş: *{durus}*\n"
-            f"Önerilen: %{w*100:.1f} hisse / %{(1-w)*100:.1f} mevduat  (vol %{(yvol or 0)*100:.0f})\n"
-            f"_Duruş göstergesidir, kâhin değil — risk-farkında temkin._")
-
-
-if __name__ == "__main__":
-    print("gonder (token yok):", gonder("test"))
-    print(mesaj_kur("2026-06-26", "MEVDUAT LEHİNE", 4.5, 37.0, 32.5, 0.012, 0.29))
+            body = r.read().decode("utf-8", "replace")
+            sonuc = f"HTTP {r.status} · {body[:200]}"
+    except Exception as e:
+        try: sonuc = f"HATA: {e.read().decode('utf-8','replace')[:200]}"
+        except Exception: sonuc = f"HATA: {type(e).__name__}: {e}"
+L += ["", f"**Gönderim sonucu:** {sonuc}", "",
+      "- `\"ok\":true` görüyorsan → telefonuna mesaj düştü, boru tamam.",
+      "- `chat not found` → CHAT_ID yanlış ya da bota hiç /start atmadın.",
+      "- `Unauthorized` → TOKEN yanlış/eski.",
+      "- TOKEN/CHAT_ID **YOK** → workflow env'i ya da secret ismi tutmuyor."]
+with open("BACKTEST_SONUC.md", "w", encoding="utf-8") as f:
+    f.write("\n".join(L))
+print("\n".join(L))
