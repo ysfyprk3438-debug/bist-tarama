@@ -19,7 +19,7 @@ import numpy as np
 
 TEMPLATE = "apex_omurga_v1.html"
 OUT = "apex.html"
-SURUM = "v1.7"                 # <-- her deploy'da artir: v1.8, v1.9 ... (cache tazelenir)
+SURUM = "v1.8"                 # <-- her deploy'da artir: v1.9, v2.0 ... (cache tazelenir)
 TAHMIN_TAVAN = 40.0           # tahmin gosterim tavani (+-%)
 ATR_K_STOP = 2.0             # stop = fiyat - K * ATR
 ATR_K_HEDEF = 3.0            # kirilim varsa hedef = fiyat + K * ATR
@@ -45,11 +45,26 @@ BIST = [
 
 MAKRO = {(2024,4):(47.5,44.4),(2025,1):(45.0,38.1),(2025,2):(46.0,35.0),(2025,3):(43.0,33.0),
          (2025,4):(39.5,31.5),(2026,1):(37.0,30.9),(2026,2):(37.0,32.5)}
+def _makro_oku(bugun):
+    """makro_guncel.json varsa o donem icin (politika,enflasyon) override eder;
+    yoksa statik MAKRO tablosuna duser. Boylece makro veri KODDAN AYRIK:
+    dogrulanmis bir besleme json yazinca rejim otomatik tazelenir, kod degismez."""
+    try:
+        p=pathlib.Path("makro_guncel.json")
+        if p.exists():
+            j=json.loads(p.read_text(encoding="utf-8"))
+            return float(j["politika"]), float(j["enflasyon"]), j.get("kaynak","makro_guncel.json")
+    except Exception:
+        pass
+    yc=(bugun.year,(bugun.month-1)//3+1)
+    pol,enf=MAKRO.get(yc,MAKRO[max(MAKRO)])
+    return pol,enf,"statik tablo"
+
 def rejim_hesapla(bugun):
-    yc=(bugun.year,(bugun.month-1)//3+1); pol,enf=MAKRO.get(yc,MAKRO[max(MAKRO)])
+    pol,enf,kaynak=_makro_oku(bugun)
     reel=round(pol-enf,1)
     durus,lehte=("MEVDUAT LEHINE","mevduat") if reel>=3 else (("HISSE LEHINE","hisse") if reel<=-3 else ("NOTR","notr"))
-    return {"politika":pol,"enflasyon":enf,"reel":reel,"durus":durus,"lehte":lehte}
+    return {"politika":pol,"enflasyon":enf,"reel":reel,"durus":durus,"lehte":lehte,"makro_kaynak":kaynak}
 
 def risk_pozisyon(lehte,dd=0.015,k=2.5,vol=0.29):
     # vol = ILGILI HISSENIN yillik oynakligi (global sabit degil)
@@ -242,6 +257,49 @@ def build_html(veri=None):
 def write_html(out=OUT,veri=None):
     html,data=build_html(veri=veri); pathlib.Path(out).write_text(html,encoding="utf-8"); return out,data
 
+def rapor_md(data):
+    """O anki tum durumu .md raporu olarak uretir (Defter 'Rapor uret' butonu icin)."""
+    d=data; il=d.get("ileri"); rej=d["rejim"]; m=d["master"]; df=d["defter"]
+    L=["# APEX — Durum Raporu",""]
+    L.append("- Tarih: {} · Surum: {}".format(d.get("uretildi",""), d.get("surum","")))
+    L.append("- Veri: {} dk gecikmeli · YATIRIM TAVSIYESI DEGILDIR".format(d.get("delay_dk",15)))
+    L.append("")
+    L.append("## Merkez Bas Puanlama (sicille agirlikli)")
+    L.append("- Skor: **{}/100** — {}".format(m["skor"], m["q"]))
+    for a in d["ajanlar"]:
+        L.append("  - {} {}: {} — {}".format(a["ikon"], a["ad"], a["sc"], a["sub"]))
+    L.append("")
+    L.append("## Rejim")
+    L.append("- Reel faiz **%{}** ({}) · politika %{} · enflasyon %{} · kaynak: {}".format(
+        rej["reel"], rej["durus"], rej["politika"], rej["enflasyon"], rej.get("makro_kaynak","")))
+    L.append("")
+    L.append("## Ileri-test (tek dürüst OOS)")
+    if il:
+        L.append("- N={} gun · 100'den".format(il["n"]))
+        L.append("- Sistem **{}** · Endeks {} · Mevduat {}".format(il["sistem"][-1], il["endeks"][-1], il["mevduat"][-1]))
+        L.append("- Su an ONDE: **{}** ({})".format(il["onde"], il["onde_v"]))
+        L.append("- Risk (MaxDD): Sistem **{}%** · Endeks {}% — kucuk DD = iyi risk disiplini".format(il["dd_sistem"], il["dd_endeks"]))
+    else:
+        L.append("- Henuz kayit yok (GitHub Actions her is gunu 18:30 besler).")
+    L.append("")
+    L.append("## Kasa (sanal · paper)")
+    L.append("- Toplam ₺{} · Nakit ₺{} · Pozisyon ₺{}".format(df["deger"], df["nakit"], df["pozisyon"]))
+    L.append("- Gerceklesen K/Z ₺{} · Odenen komisyon ₺{}".format(df["gz_kapali"], df["komisyon"]))
+    L.append("")
+    L.append("## Modelin tahmini (damgali · tavanli ±%{})".format(int(TAHMIN_TAVAN)))
+    for i,t in enumerate((d.get("tahmin") or [])[:5],1):
+        L.append("- #{} {} ({}): %{} · sicil %{}".format(i, t["tk"], t["nm"], t["beklenti"], t["sicil"]))
+    L.append("")
+    L.append("## Gunun kazananlari (gercek olgu)")
+    for i,g in enumerate((d.get("gainers") or [])[:5],1):
+        L.append("- {}. {} ({}): %{}".format(i, g["tk"], g["nm"], g["ch"]))
+    L.append("")
+    L.append("## Durustluk notu")
+    L.append("- Getiri tahmini ~ yazi-tura (sicil ~%49). KANITLANMIS edge DEGIL.")
+    L.append("- Dogrulanmis eksen: RISK disiplini — hisseye-ozel vol-target Poz + ATR(14)x{} stop.".format(ATR_K_STOP))
+    L.append("- Ileri-test sadece risk/rejim-durus disiplinini olcer; getiri tahminini OLCMEZ.")
+    return "\n".join(L)
+
 def run_streamlit():
     import streamlit as st, streamlit.components.v1 as components
     st.set_page_config(page_title="APEX",page_icon="\u26A1",layout="centered")
@@ -250,6 +308,11 @@ def run_streamlit():
         return fetch_bist()
     html,data=build_html(veri=_veri())
     components.html(html,height=820,scrolling=True)
+
+    # Rapor (.md) — Defter'deki "Rapor uret" butonunun calisan karsiligi
+    st.download_button("\U0001F4CB Raporu indir (.md)", data=rapor_md(data),
+                       file_name="apex_rapor_{}.md".format(data.get("uretildi","")),
+                       mime="text/markdown", use_container_width=True)
 
     n=len([s for s in data["stocks"] if isinstance(s["px"],(int,float))])
     if not data["canli"]:
