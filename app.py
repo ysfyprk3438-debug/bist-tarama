@@ -20,7 +20,7 @@ import json, datetime, math, pathlib
 import numpy as np
 
 OUT = "apex.html"
-SURUM = "v2.1"
+SURUM = "v2.2"
 TAHMIN_TAVAN = 40.0
 ATR_K_STOP = 2.0
 ATR_K_HEDEF = 3.0
@@ -109,6 +109,41 @@ def atr_hesapla(high,low,close,n=14):
     if len(tr)==0: return None
     return float(np.mean(tr[-n:])) if len(tr)>=n else float(np.mean(tr))
 
+def kesisim_analiz(close, disp_n=None):
+    """MA50/MA200 altin (50>200) ve olum (50<200) kesisimleri — OLGUSAL.
+    Geri doner: son kesisim tipi+kac gun once, mevcut MA50-MA200 farki (%) ve daralma yonu,
+    mekanik kalan-gun tahmini (DAMGALI), ve bu hissede gecmis altin kesisimden K gun sonraki
+    medyan getiri (geçmis olgu, edge DEGIL). Tahmin/al-sat URETMEZ."""
+    c=np.asarray(close,float); n=len(c)
+    if n<210:
+        return {"yeterli":False}
+    m50=np.asarray(ma(c,50),float); m200=np.asarray(ma(c,200),float)
+    diff=m50-m200; start=200
+    crosses=[]
+    for i in range(start+1,n):
+        if diff[i-1]<=0 and diff[i]>0: crosses.append((i,"altin"))
+        elif diff[i-1]>=0 and diff[i]<0: crosses.append((i,"olum"))
+    son=crosses[-1] if crosses else None
+    gun_once=(n-1-son[0]) if son else None
+    gap_pct=round(float(diff[-1]/c[-1]*100),1) if c[-1] else 0.0
+    look=min(10,n-start-2); look=max(look,1)
+    daralma=abs(diff[-1])-abs(diff[-1-look])
+    gap_yon="daraliyor" if daralma<0 else "aciliyor"
+    proj=None
+    slope=(diff[-1]-diff[-1-look])/look
+    if slope!=0 and (diff[-1]*slope<0):
+        d2c=abs(diff[-1]/slope)
+        if 0<d2c<400: proj=int(round(d2c))
+    K=20; fwd=[]
+    for idx,tip in crosses:
+        if tip=="altin" and idx+K<n and c[idx]>0:
+            fwd.append((c[idx+K]/c[idx]-1)*100)
+    post=({"k":K,"medyan":round(float(np.median(fwd)),1),"n":len(fwd)} if len(fwd)>=2 else None)
+    D=disp_n or n; base=n-D
+    markers=[{"frac":round((idx-base)/max(D-1,1),4),"tip":tip} for idx,tip in crosses if idx>=base][-3:]
+    return {"yeterli":True,"son_tip":(son[1] if son else None),"gun_once":gun_once,
+            "gap_pct":gap_pct,"gap_yon":gap_yon,"proj":proj,"post":post,"markers":markers}
+
 def fetch_bist():
     try:
         import yfinance as yf
@@ -116,7 +151,7 @@ def fetch_bist():
         return {}
     syms=[s+".IS" for s,_ in BIST]; out={}
     try:
-        df=yf.download(syms,period="1y",interval="1d",group_by="ticker",auto_adjust=True,progress=False,threads=True)
+        df=yf.download(syms,period="2y",interval="1d",group_by="ticker",auto_adjust=True,progress=False,threads=True)
     except Exception:
         return {}
     for s,_ in BIST:
@@ -128,11 +163,12 @@ def fetch_bist():
             px=float(c[-1]); prev=float(c[-2]); ch=round((px/prev-1)*100,1)
             ay3=round((px/float(c[-63])-1)*100,1) if len(c)>=63 else None
             lo=float(np.min(c[-60:])); hi=float(np.max(c[-60:]))
-            vol=yillik_vol(c)
-            atr=atr_hesapla(high,low,c,14) or (px*0.02)
-            out[s]={"px":round(px,2),"ch":ch,"hist":downsample(c),"ma50":downsample(ma(c,50)),
-                    "ma200":downsample(ma(c,200)),"rsi":rsi(c),"destek":round(lo,2),"direnc":round(hi,2),
-                    "ay3":ay3,"vol":round(vol,3),"atr":round(atr,2)}
+            vol=yillik_vol(c); atr=atr_hesapla(high,low,c,14) or (px*0.02)
+            ma50f=ma(c,50); ma200f=ma(c,200); D=min(252,len(c))   # grafik son ~1 yil; kesisim tam 2 yil
+            out[s]={"px":round(px,2),"ch":ch,
+                    "hist":downsample(c[-D:]),"ma50":downsample(ma50f[-D:]),"ma200":downsample(ma200f[-D:]),
+                    "rsi":rsi(c),"destek":round(lo,2),"direnc":round(hi,2),
+                    "ay3":ay3,"vol":round(vol,3),"atr":round(atr,2),"kesisim":kesisim_analiz(c,disp_n=D)}
         except Exception:
             continue
     return out
@@ -213,10 +249,10 @@ def build_app_data(bugun=None, veri=None):
                 "rsi":(d["rsi"] if d["rsi"] is not None else "-"),"destek":d["destek"],"direnc":d["direnc"],
                 "hedef":hedef,"stop":stop,"atr":d.get("atr"),"rr":rr,
                 "ay3":(d["ay3"] if d["ay3"] is not None else "-"),
-                "vol":rp_h["vol_pct"],"poz":rp_h["agirlik_pct"],"veri":True})
+                "vol":rp_h["vol_pct"],"poz":rp_h["agirlik_pct"],"kesisim":d.get("kesisim"),"veri":True})
         else:
             base.update({"px":"-","ch":0,"hist":[],"ma50":[],"ma200":[],"rsi":"-","destek":"-","direnc":"-",
-                "hedef":"-","stop":"-","atr":"-","rr":"-","ay3":"-","vol":"-","poz":"-","veri":False})
+                "hedef":"-","stop":"-","atr":"-","rr":"-","ay3":"-","vol":"-","poz":"-","kesisim":None,"veri":False})
         stocks.append(base)
     verili=[s for s in stocks if s.get("veri")]
     gainers=sorted(verili,key=lambda s:s["ch"],reverse=True)[:6]
@@ -247,7 +283,7 @@ body{background:var(--ink);color:var(--bone);font-family:var(--body);line-height
   -webkit-font-smoothing:antialiased;font-size:14px}
 .wrap{max-width:980px;margin:0 auto;padding:0 16px 64px}
 .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
-.up{color:var(--teal)} .dn{color:var(--rust)} .am{color:var(--amber)} .dim{color:var(--dim)}
+.up{color:var(--teal)} .dn{color:var(--rust)} .am{color:var(--amber)} .dim{color:var(--dim)} .faint{color:var(--faint)}
 
 /* ---- status rail ---- */
 .rail{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
@@ -419,7 +455,7 @@ function drawGauge(score){
 }
 
 /* ---- sparkline (price + ma50 + ma200) ---- */
-function sparkSVG(hist,ma50,ma200){
+function sparkSVG(hist,ma50,ma200,kesisim){
   var W=620,H=150,pad=8;
   if(!hist||hist.length<2)return '<div class="stub">Fiyat serisi yok — canli veriye baglaninca dolar.</div>';
   var all=hist.concat(ma50||[],ma200||[]).filter(function(x){return typeof x==='number'});
@@ -430,10 +466,15 @@ function sparkSVG(hist,ma50,ma200){
     return '<path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="'+w+'"'+(op?' opacity="'+op+'"':'')+'/>';}
   var s='<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="150" preserveAspectRatio="none">';
   s+=path(ma200,'#5E6B72',1.2);s+=path(ma50,'#4FB8A4',1.4,.8);s+=path(hist,'#E8E4D8',1.8);
+  if(kesisim&&kesisim.markers){var ref=(ma50&&ma50.length)?ma50:hist;
+    kesisim.markers.forEach(function(m){var xi=pad+(W-2*pad)*m.frac;
+      var yi=Y(ref[Math.min(ref.length-1,Math.round(m.frac*(ref.length-1)))]);
+      var col=m.tip==='altin'?'#E0A458':'#D2715A';
+      s+='<circle cx="'+xi.toFixed(1)+'" cy="'+yi.toFixed(1)+'" r="4.5" fill="'+col+'" stroke="#0E1419" stroke-width="1.6"/>';});}
   s+='</svg>';
   s+='<div class="legend"><span><i style="background:#E8E4D8"></i>fiyat</span>'+
      '<span><i style="background:#4FB8A4"></i>MA50</span>'+
-     '<span><i style="background:#5E6B72"></i>MA200</span></div>';
+     '<span><i style="background:#5E6B72"></i>MA200</span>'+'<span style="color:#E0A458">\u25CF altin</span><span style="color:#D2715A">\u25CF olum</span></div>';
   return s;
 }
 
@@ -476,6 +517,18 @@ function renderDash(){
   });
 }
 
+function kesisimKutu(k){
+  if(!k) return '';
+  if(!k.yeterli) return '<div class="stub">MA50/MA200 kesisim analizi icin yeterli gecmis yok (>200 gun gerekir).</div>';
+  var tipTxt=k.son_tip==='altin'?'<b class="am">ALTIN kesisim</b>':(k.son_tip==='olum'?'<b class="dn">OLUM kesisim</b>':'kesisim yok');
+  var l1=k.son_tip?('Son kesisim: '+tipTxt+' \u00b7 <b>'+k.gun_once+' gun once</b>'):'Kayitli MA50/MA200 kesisimi yok';
+  var l2='MA50 su an MA200\'un <b>%'+Math.abs(k.gap_pct)+'</b> '+(k.gap_pct>=0?'<span class="am">ustunde</span>':'<span class="dn">altinda</span>')+' \u00b7 fark '+k.gap_yon;
+  var l3=k.proj?('<div class="dim" style="margin-top:6px">Mevcut hizla kabaca <b>~'+k.proj+' gun</b> sonra kesisim olabilir — <b>mekanik tahmin, kesinlik degil</b>.</div>'):'';
+  var l4=k.post?('<div class="dim" style="margin-top:6px">Bu hissede gecmis altin kesisimlerden '+k.post.k+' gun sonra medyan: <b>%'+(k.post.medyan>0?'+':'')+k.post.medyan+'</b> ('+k.post.n+' olay). <span class="faint">Gecmis = gelecek degildir; kanitlanmis edge degil.</span></div>'):'';
+  var bc=k.son_tip==='altin'?'var(--amber)':(k.son_tip==='olum'?'var(--rust)':'var(--line)');
+  return '<div class="stamp" style="border-left-color:'+bc+'">'+l1+'<br>'+l2+l3+l4+'</div>';
+}
+
 /* ---- render detail ---- */
 var curTab='teknik';
 function renderDetail(i){
@@ -483,7 +536,8 @@ function renderDetail(i){
   document.getElementById('view-dash').classList.add('hidden');
   var v=document.getElementById('view-detail');v.classList.remove('hidden');
   var ch=(typeof s.ch==='number')?s.ch:0;
-  var teknik='<div class="spark">'+sparkSVG(s.hist,s.ma50,s.ma200)+'</div>'+
+  var teknik='<div class="spark">'+sparkSVG(s.hist,s.ma50,s.ma200,s.kesisim)+'</div>'+
+    kesisimKutu(s.kesisim)+
     '<div class="dgrid">'+
     cell('Yillik vol',s.vol==='-'?'—':'%'+s.vol)+cell('RSI(14)',s.rsi==='-'?'—':s.rsi)+
     cell('3-ay',s.ay3==='-'?'—':'%'+sgn(s.ay3))+cell('R/Odul',s.rr==='-'?'—':s.rr+'×')+
@@ -570,9 +624,11 @@ def run_streamlit():
     html,data=build_html(veri=_veri())
     components.html(html,height=1180,scrolling=True)
 
-    st.download_button("Raporu indir (.md)", data=rapor_md(data),
-                       file_name="apex_rapor_{}.md".format(data.get("uretildi","")),
-                       mime="text/markdown", use_container_width=True)
+    with st.expander("\U0001F4CB Raporu gor / indir"):
+        st.markdown(rapor_md(data))
+        st.download_button("Raporu indir (.md)", data=rapor_md(data),
+                           file_name="apex_rapor_{}.md".format(data.get("uretildi","")),
+                           mime="text/markdown", use_container_width=True)
 
     # ---- Kosullu senaryo haritasi (interaktif — native) ----
     st.markdown("---")
