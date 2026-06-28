@@ -20,7 +20,7 @@ import json, datetime, math, pathlib
 import numpy as np
 
 OUT = "apex.html"
-SURUM = "v2.2"
+SURUM = "v2.3"
 TAHMIN_TAVAN = 40.0
 ATR_K_STOP = 2.0
 ATR_K_HEDEF = 3.0
@@ -224,6 +224,25 @@ def senaryo_cerceve(px, hedef, vol_pct, atr):
     yon=("Hedef mevcut fiyatin USTUNDE" if fark>0.5 else ("Hedef mevcut fiyatin ALTINDA" if fark<-0.5 else "Hedef mevcut fiyata ~esit"))
     return {"fark":round(fark,1),"yil_oran":round(yil_oran,2),"gun":(round(gun) if gun else None),
             "sigma_pct":round(sigma*100),"buyukluk":buyukluk,"bnot":bnot,"yon":yon}
+
+def karar_cercevesi(entry, hedef, vol_pct, atr, sermaye, lehte, teknik_hedef=None):
+    """SEC kararini (kullanici verdi) OLCULU plana cevirir. AL-SAT URETMEZ.
+    Sistem 'NE alacagini' soylemez (o sende: katalizor+kanaat); 'NE KADAR' ve
+    'NEREYE KADAR'i verir. Tum cikti risk ekseninden (dogrulanmis), tahminden degil."""
+    if not entry or entry<=0: return None
+    atr=float(atr) if atr else entry*0.02
+    stop=round(max(entry-ATR_K_STOP*atr, entry*0.6),2)
+    vol_frac=max(float(vol_pct or 30)/100.0,0.12)
+    poz=risk_pozisyon(lehte,vol=vol_frac)["agirlik_pct"]          # vol-target agirlik
+    poz_tl=round(sermaye*poz/100.0)
+    adet=int(poz_tl//entry) if entry>0 else 0
+    riskli_tl=round((entry-stop)/entry*poz_tl) if entry>stop else 0
+    riskli_pct=round(riskli_tl/sermaye*100,2) if sermaye else 0
+    th=teknik_hedef if (isinstance(teknik_hedef,(int,float)) and teknik_hedef>entry) else None
+    rr=round((th-entry)/max(entry-stop,1e-9),1) if th else None
+    sen=senaryo_cerceve(entry,hedef,vol_pct,atr) if (hedef and hedef>0) else None
+    return {"stop":stop,"poz_pct":poz,"poz_tl":poz_tl,"adet":adet,
+            "riskli_tl":riskli_tl,"riskli_pct":riskli_pct,"rr":rr,"senaryo":sen}
 
 def build_app_data(bugun=None, veri=None):
     bugun=bugun or datetime.date.today()
@@ -562,7 +581,7 @@ function renderDetail(i){
     '<div id="tab-baglam" class="hidden">'+baglam+'</div>'+
     '<div id="tab-sicil" class="hidden">'+sicilT+'</div>'+
     '<div class="stamp" style="border-left-color:var(--teal);margin-top:18px">Analist hedefi senaryosu icin '+
-    'sayfanin altindaki <b>Kosullu senaryo haritasi</b> panelini kullan — gordugun rakami buraya girersin.</div>';
+    'sayfanin altindaki <b>Karar Cercevesi</b> panelini kullan — gordugun rakami buraya girersin.</div>';
   document.getElementById('back').onclick=function(){
     v.classList.add('hidden');document.getElementById('view-dash').classList.remove('hidden');
     window.scrollTo(0,0);
@@ -630,37 +649,55 @@ def run_streamlit():
                            file_name="apex_rapor_{}.md".format(data.get("uretildi","")),
                            mime="text/markdown", use_container_width=True)
 
-    # ---- Kosullu senaryo haritasi (interaktif — native) ----
+    # ---- KARAR CERCEVESI (interaktif — native) ----
     st.markdown("---")
-    st.subheader("\U0001F9ED Kosullu senaryo haritasi")
-    st.caption("Analist hedef fiyatini ForInvest'ten KENDIN gor, gir. Sistem o rakami bu hissenin KENDI "
-               "oynakligina gore baglama oturtur — yon/al-sat SOYLEMEZ. Karar sende.")
+    st.subheader("\U0001F9ED Karar Cercevesi")
+    st.caption("Sistem NE alacagini SOYLEMEZ (o sende: katalizor + kanaat). Bir hisseyi dusunuyorsan, "
+               "sana NE KADAR ve NEREYE KADAR'i verir: vol-target poz buyuklugu, ATR stop, riskteki para. "
+               "Karar senin — ama olculu ve sinirli.")
     secilebilir=[s for s in data["stocks"] if s.get("veri")]
     if not secilebilir:
-        st.info("Canli fiyat yok — senaryo icin yfinance verisi gerekli.")
+        st.info("Canli fiyat yok — cerceve icin yfinance verisi gerekli.")
     else:
         etiketler=["{} — {}".format(s["tk"],s["nm"]) for s in secilebilir]
-        secim=st.selectbox("Hisse",etiketler,key="sen_kod")
+        secim=st.selectbox("Dusundugun hisse",etiketler,key="kc_kod")
         sec=secilebilir[etiketler.index(secim)]
         px=float(sec["px"])
-        c1,c2=st.columns(2)
+        c1,c2,c3=st.columns(3)
         c1.metric("Mevcut fiyat","\u20BA{}".format(px))
         c2.metric("Yillik oynaklik","%{}".format(sec.get("vol","-")))
-        hedef=st.number_input("Analist hedef fiyati (ForInvest'te gordugun sayi, \u20BA)",
-                              min_value=0.0,value=float(px),step=0.01,key="sen_hedef")
-        if st.button("Cerceveyi goster",key="sen_btn",use_container_width=True):
-            c=senaryo_cerceve(px,float(hedef),sec.get("vol"),sec.get("atr"))
-            if not c:
-                st.warning("Hesaplanamadi — fiyat/oynaklik verisi eksik.")
+        c3.metric("Rejim duruse",data["rejim"]["durus"].split()[0].title())
+        cc1,cc2=st.columns(2)
+        sermaye=cc1.number_input("Sermayen (\u20BA)",min_value=1000.0,value=100000.0,step=1000.0,key="kc_sermaye")
+        entry=cc2.number_input("Dusundugun giris fiyati (\u20BA)",min_value=0.0,value=float(px),step=0.01,key="kc_entry")
+        hedef=st.number_input("Analist hedefi — istege bagli (ForInvest'te gordugun, \u20BA)",
+                              min_value=0.0,value=0.0,step=0.01,key="kc_hedef",
+                              help="0 birakirsan senaryo bolumu atlanir.")
+        if st.button("Karar cercevesini cikar",key="kc_btn",use_container_width=True):
+            k=karar_cercevesi(float(entry),float(hedef),sec.get("vol"),sec.get("atr"),
+                              float(sermaye),data["rejim"]["lehte"],teknik_hedef=sec.get("hedef"))
+            if not k:
+                st.warning("Hesaplanamadi — giris fiyati/veri eksik.")
             else:
-                st.markdown("#### {} mesafe".format(c["buyukluk"]))
-                st.write("{}: **%{:+}**".format(c["yon"],c["fark"]))
-                st.write("Bu mesafe, hissenin ~1 yillik oynakliginin (%{}) **{}×**'i kadar.".format(c["sigma_pct"],c["yil_oran"]))
-                if c["gun"]:
-                    st.write("Tipik gunluk salinima gore kabaca **{} islem gunu**luk mesafe.".format(c["gun"]))
-                st.info(c["bnot"])
-                st.caption("Analist hedefleri sistematik olarak IYIMSER saplidir ve KANITLANMIS bir edge "
-                           "DEGILDIR. Bu bir cerceve, tahmin degil — karar sende.")
+                st.markdown("#### Olculu plan (AL degil — cerceve)")
+                m1,m2,m3=st.columns(3)
+                m1.metric("Poz buyuklugu","%{}".format(k["poz_pct"]),help="Sermayenin bu kadari — vol-target")
+                m2.metric("Tutar","\u20BA{:,}".format(k["poz_tl"]).replace(",","."))
+                m3.metric("~Adet",str(k["adet"]))
+                n1,n2,n3=st.columns(3)
+                n1.metric("Stop (ATR)","\u20BA{}".format(k["stop"]),help="Buradan asagisi: tezin yanlis, cik")
+                n2.metric("Riskteki para","\u20BA{:,}".format(k["riskli_tl"]).replace(",","."),
+                          delta="sermayenin %{}".format(k["riskli_pct"]),delta_color="off")
+                n3.metric("R/Odul",("{}×".format(k["rr"]) if k["rr"] else "—"),
+                          help="Teknik hedefe gore kazanc/risk orani")
+                st.markdown("**Stop = ATR(14)×{} · poz = hisseye-ozel vol-target.** Bu, normal bir dususte "
+                            "kaybinin butcende kalmasi icin. Giris/cikis kararini SEN verirsin.".format(int(ATR_K_STOP)))
+                if k["senaryo"]:
+                    c=k["senaryo"]
+                    st.markdown("**Analist hedefi cercevesi:** {} mesafe — {}: %{:+}".format(c["buyukluk"],c["yon"],c["fark"]))
+                    st.caption("Mesafe, hissenin ~1 yillik oynakliginin (%{}) {}x'i. {}".format(c["sigma_pct"],c["yil_oran"],c["bnot"]))
+                st.info("Sistemin sana SOYLEMEDIGI: bu hisse cikar mi (~yazi-tura, edge yok). SOYLEDIGI: "
+                        "ne kadar koy ve nerede dur. Secim + katalizor sende.")
     with st.expander("Durustluk · sayilar nereden? ({})".format(SURUM)):
         st.write("{} hisse listede · {} tanesi canli veriyle dolu.".format(len(data['stocks']),data['n_veri']))
         st.write("Guven kerterizi amber cunku getiri ekseni ~yazi-tura. Poz = hisse-basi vol-target. "
