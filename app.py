@@ -499,7 +499,7 @@ function drawGauge(score){
 }
 
 /* ---- sparkline (price + ma50 + ma200 + projektor konisi) ---- */
-function sparkSVG(hist,ma50,ma200,kesisim,cone){
+function sparkSVG(hist,ma50,ma200,kesisim,cone,stop){
   var W=620,H=150,pad=8;
   if(!hist||hist.length<2)return '<div class="stub">Fiyat serisi yok — canli veriye baglaninca dolar.</div>';
   var L=hist.length;
@@ -517,6 +517,10 @@ function sparkSVG(hist,ma50,ma200,kesisim,cone){
   function path(arr,col,w,op){if(!arr||arr.length<2)return '';var d='';for(var i=0;i<arr.length;i++){d+=(i?'L':'M')+X(i).toFixed(1)+' '+Y(arr[i]).toFixed(1)+' ';}
     return '<path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="'+w+'"'+(op?' opacity="'+op+'"':'')+'/>';}
   var s='<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="150" preserveAspectRatio="none">';
+  if(num(stop)&&stop>=mn&&stop<=mx){
+    s+='<line x1="'+pad+'" y1="'+Y(stop).toFixed(1)+'" x2="'+(W-pad)+'" y2="'+Y(stop).toFixed(1)+'" stroke="#D2715A" stroke-width="0.9" stroke-dasharray="4 4" opacity="0.7"/>';
+    s+='<text x="'+(W-pad-2)+'" y="'+(Y(stop)-3).toFixed(1)+'" fill="#D2715A" font-size="9" text-anchor="end" font-family="monospace">stop</text>';
+  }
   if(fut){
     var lx=L-1, ly=hist[L-1];
     var poly='M '+X(lx).toFixed(1)+' '+Y(ly).toFixed(1)+' ';
@@ -547,7 +551,7 @@ function kesisimKutu(k){
   var tipTxt=k.son_tip==='altin'?'<b class="am">ALTIN kesisim</b>':(k.son_tip==='olum'?'<b class="dn">OLUM kesisim</b>':'kesisim yok');
   var l1=k.son_tip?('Son kesisim: '+tipTxt+' \u00b7 <b>'+k.gun_once+' gun once</b>'):'Kayitli MA50/MA200 kesisimi yok';
   var l2='MA50 su an MA200\'un <b>%'+Math.abs(k.gap_pct)+'</b> '+(k.gap_pct>=0?'<span class="am">ustunde</span>':'<span class="dn">altinda</span>')+' \u00b7 fark '+k.gap_yon;
-  var l3=k.proj?('<div class="dim" style="margin-top:6px">Mevcut hizla kabaca <b>~'+k.proj+' gun</b> sonra kesisim olabilir — <b>mekanik tahmin, kesinlik degil</b>.</div>'):'';
+  var l3=(k.proj&&k.proj<=60)?('<div class="dim" style="margin-top:6px">Mevcut hizla kabaca <b>~'+k.proj+' gun</b> sonra kesisim olabilir — <b>mekanik tahmin, kesinlik degil</b>.</div>'):'';
   var l4=k.post?('<div class="dim" style="margin-top:6px">Bu hissede gecmis altin kesisimlerden '+k.post.k+' gun sonra medyan: <b>%'+(k.post.medyan>0?'+':'')+k.post.medyan+'</b> ('+k.post.n+' olay). <span class="faint">Gecmis = gelecek degildir; kanitlanmis edge degil.</span></div>'):'';
   var bc=k.son_tip==='altin'?'var(--amber)':(k.son_tip==='olum'?'var(--rust)':'var(--line)');
   return '<div class="stamp" style="border-left-color:'+bc+'">'+l1+'<br>'+l2+l3+l4+'</div>';
@@ -564,15 +568,33 @@ function riskKutu(rd){
     '<div class="faint" style="font-size:11px;margin-top:7px">Bu skor \'kesin duser\' demez; buradan asagi hareketin ne kadar normal/beklenir oldugunu soyler. Yon tahmini DEGIL.</div></div>';
 }
 
+/* ---- PROJEKTOR CUMLESI (grafik sonrasi, tek bakista) ---- */
+function projektorCumle(s){
+  if(!s.cone||!s.cone.length||!num(s.px)) return '';
+  var L=s.cone[s.cone.length-1], px=s.px, alt=L.alt, ust=L.ust;
+  var dAlt=((alt/px-1)*100).toFixed(1), dUst=((ust/px-1)*100).toFixed(1);
+  var stopTxt='';
+  if(num(s.stop)){
+    if(s.stop<=alt) stopTxt=' Stop \u20BA'+s.stop+' bu bandin ALTINDA \u2014 normal 5-gun dalgalanmasi tek basina stopu tetiklemez.';
+    else stopTxt=' Stop \u20BA'+s.stop+' bu bandin ICINDE \u2014 normal 5-gun dalgalanmasi bile stopu test edebilir, dikkat.';
+  }
+  return '<div class="stamp" style="border-left-color:#38BDF8;background:rgba(56,189,248,.06)">'+
+    '<b style="color:#38BDF8">\uD83D\uDCE1 Projektor (sade):</b> Onumuzdeki 5 gunde salt oynaklikla fiyat kabaca \u20BA'+alt+' (%'+dAlt+') \u2013 \u20BA'+ust+' (+%'+Math.abs(dUst)+') arasinda gezebilir.'+
+    ' Ortasi bugune yakin cunku YON tahmini yok \u2014 bu kehanet degil, belirsizligin genisligi.'+stopTxt+'</div>';
+}
+
 /* ---- AKILLI SADE OZET (sentez, tek bakista) ---- */
 function ozetKutu(s){
   if(!s.veri) return '';
   var px=s.px, m50=(s.ma50&&s.ma50.length)?s.ma50[s.ma50.length-1]:null, m200=(s.ma200&&s.ma200.length)?s.ma200[s.ma200.length-1]:null;
   var trend='trend okunamadi', tcol='dim';
+  var a50=num(px)&&num(m50)&&px>=m50, a200=num(px)&&num(m200)&&px>=m200, m5g2=num(m50)&&num(m200)&&m50>=m200;
   if(num(px)&&num(m50)&&num(m200)){
-    if(px>m50&&m50>m200){trend='uzun vadeli YUKSELIS tarafinda \u2014 fiyat hem MA50 hem MA200 ustunde';tcol='up';}
-    else if(px<m50&&m50<m200){trend='DUSUS tarafinda \u2014 fiyat hem MA50 hem MA200 altinda';tcol='dn';}
-    else{trend='KARISIK/yatay \u2014 fiyat ortalamalar arasinda, net yon yok';tcol='am';}
+    if(a50&&a200&&m5g2){trend='uzun vadeli YUKSELIS \u2014 fiyat hem MA50 hem MA200 ustunde';tcol='up';}
+    else if(!a50&&!a200&&!m5g2){trend='DUSUS \u2014 fiyat hem MA50 hem MA200 altinda';tcol='dn';}
+    else if(m5g2&&!a50){trend='uzun vade YUKARI ama kisa vadede geri cekilmis (fiyat MA50 altinda, MA200 ustunde)';tcol='am';}
+    else if(!m5g2&&a50){trend='uzun vade ASAGI ama kisa vadede toparlaniyor (fiyat MA50 ustunde, MA200 altinda)';tcol='am';}
+    else{trend='KARISIK \u2014 net yon yok';tcol='am';}
   }
   var rsiTxt='';
   if(num(s.rsi)){
@@ -585,14 +607,11 @@ function ozetKutu(s){
   var riskTxt='';
   if(s.risk_dusus){var rk=s.risk_dusus.skor; riskTxt='Dusus riski '+rk+'/100 ('+(rk>=60?'yuksek':(rk>=30?'orta':'dusuk'))+').';}
   var momTxt = num(s.ay3)?(' Son 3 ay: %'+(s.ay3>0?'+':'')+s.ay3+'.'):'';
-  var coneTxt='';
-  if(s.cone&&s.cone.length){var L=s.cone[s.cone.length-1]; coneTxt='Onumuzdeki 5 gunde fiyat ~%80 ihtimalle \u20BA'+L.alt+' \u2013 \u20BA'+L.ust+' arasinda oynayabilir \u2014 yon tahmini DEGIL, sadece olasi genislik.';}
   return '<div class="stamp" style="border-left-color:var(--teal);background:rgba(79,184,164,.07)">'+
     '<div style="font-family:var(--disp);font-weight:600;color:var(--bone);font-size:13px;margin-bottom:8px">\uD83D\uDCCD '+s.tk+' su an nerede? (sade ozet)</div>'+
     '<div class="'+tcol+'" style="font-size:13px;margin-bottom:6px">'+trend+'.</div>'+
     ((riskTxt||momTxt)?'<div class="dim" style="font-size:12.5px;margin-bottom:4px">'+riskTxt+momTxt+'</div>':'')+
     (rsiTxt?'<div class="dim" style="font-size:12.5px;margin-bottom:4px">'+rsiTxt+'</div>':'')+
-    (coneTxt?'<div class="dim" style="font-size:12.5px;margin-bottom:4px">'+coneTxt+'</div>':'')+
     '<div class="faint" style="font-size:11px;margin-top:7px">Bu bir OZET \u2014 mevcut tablonun sade okumasi. Tahmin ya da \'al\' DEGIL; sistem yon soylemez, karar sende.</div>'+
     '</div>';
 }
@@ -671,7 +690,8 @@ function renderDetail(i){
   var v=document.getElementById('view-detail');v.classList.remove('hidden');
   var ch=(typeof s.ch==='number')?s.ch:0;
   var teknik=ozetKutu(s)+
-    '<div class="spark">'+sparkSVG(s.hist,s.ma50,s.ma200,s.kesisim,s.cone)+'</div>'+
+    '<div class="spark">'+sparkSVG(s.hist,s.ma50,s.ma200,s.kesisim,s.cone,s.stop)+'</div>'+
+    projektorCumle(s)+
     riskKutu(s.risk_dusus)+
     kesisimKutu(s.kesisim)+
     ogretmenKutu(s)+
