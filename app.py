@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-APEX — v2.5 · KURUMSAL ARAYUZ (self-contained) · GERCEK VERI · DURUST CERCEVE
+APEX — v2.7 · KURUMSAL ARAYUZ (self-contained) · GERCEK VERI · DURUST CERCEVE
 Tasarim tezi: "olcum aleti" — kalibre edilmis supheyi on plana koyan bir
 navigasyon/olcu cihazi. Pusula metaforu. Amber = guven (supheli), teal =
 dogrulanmis eksen (risk disiplini), pas-kirmizi = olgusal negatif.
@@ -10,9 +10,13 @@ Onceki surumlerden devam eden DURUSTLUK cekirdegi (degismedi):
   - Dogrulanmis eksen: hisse-basi vol-target Poz + ATR(14) stop.
   - Canli veri yoksa FIYAT UYDURULMAZ ("—" gosterilir). Sahte Sharpe yok.
 
-v2.5 -> v2.6: Teknik sekmesine 3 ekleme — Grafik Ogretmen (her ogenin anlami +
-o anki durum), Dusus Riski kutusu (tersinden: "buradan dusus normal mi"),
-Projektor konisi (fiyat cizgisinin sagindan acilan yonsuz 5-gun hunisi).
+v2.5 -> v2.6: Teknik sekmesine 3 ekleme — Grafik Ogretmen, Dusus Riski kutusu,
+Projektor konisi.
+
+v2.6 -> v2.7: TERS MATEMATIK tamamlandi. 6 manuel tuzak bayragi (broker, float,
+markup, dagitim, temel, pazar) artik Karar Cercevesi'nde elle girilir; 4 oto +
+6 manuel TEK profilde birlesir -> tam 10/10 tuzak skoru. Karar Cercevesi'nde
+once "neden ALMAMALIYIM?" kapisi (tuzak kontrolu) acilir, sonra poz/stop gelir.
 
 requirements.txt:  streamlit  yfinance  numpy
 """
@@ -20,7 +24,7 @@ import json, datetime, math, pathlib
 import numpy as np
 
 OUT = "apex.html"
-SURUM = "v2.6"
+SURUM = "v2.7"
 TAHMIN_TAVAN = 40.0
 ATR_K_STOP = 2.0
 ATR_K_HEDEF = 3.0
@@ -229,6 +233,58 @@ def tuzak_bayraklari(close, volume=None):
     elif yanan == 1: kat, renk = "ORTA — tek bayrak", "amber"
     else: kat, renk = "DUSUK — oto bayrak yok", "teal"
     return {"yanan": yanan, "toplam_oto": 4, "kategori": kat, "renk": renk, "bayrak": bayrak}
+
+
+# ── 6 MANUEL TUZAK BAYRAGI (ForInvest/takas — elle girilir) ──
+# (anahtar, kisa ad, ipucu/esik). Ters matematik: "neden ALMAMALIYIM?"
+MANUEL_BAYRAK = [
+    ("broker", "Broker konsantrasyonu",
+     "ForInvest AKD dagiliminda tek broker, islem hacminin %60'indan fazlasini mi yapiyor? Tek elden toplama/dagitim imzasi."),
+    ("float", "Float darligi",
+     "Halka acik oran (free float) %20'nin altinda mi? Dar float = az hisseyle fiyat oynatilabilir."),
+    ("markup", "Maliyeti yukselen alici",
+     "Takasta buyuk alicinin ortalama maliyeti hizla yukari mi kayiyor? (Markup — pompalama hazirligi.)"),
+    ("dagitim", "Fon/yabanci net satici",
+     "Fonlar veya yabanci son donemde net satici mi? (Dagitim/dump hazirligi.)"),
+    ("temel", "Temel anomali",
+     "ROE negatif ya da F/K asiri ucta mi? Fiyati tasiyan temel yok."),
+    ("pazar", "Pazar sinifi / tedbir",
+     "Hisse Yakin Izleme Pazari'nda ya da tedbir/brut-takas listesinde mi?"),
+]
+
+def tuzak_birlesik(oto, manuel):
+    """4 oto bayrak (fiyat+hacim) + 6 manuel bayragi (ForInvest/takas) TEK profilde
+    birlestirir -> tam 10/10 tuzak skoru.
+      oto    : tuzak_bayraklari()'nin donus dict'i (veya None).
+      manuel : {anahtar: 'yanan'|'temiz'|'bilinmiyor'} sozlugu.
+    Donen: toplam yanan /10, degerlendirilen kac bayrak, kategori, renk, tam liste.
+    'bilinmiyor' = ne tuzak ne temiz (kor nokta) — durust tutulur."""
+    bayrak = []; oto_var = bool(oto and oto.get("bayrak")); oto_yanan = 0
+    if oto_var:
+        for b in oto.get("bayrak", []):
+            bayrak.append({"kaynak": "oto", "durum": b[0], "ad": b[1], "not": b[2]})
+        oto_yanan = int(oto.get("yanan", 0))
+    else:
+        bayrak.append({"kaynak": "oto", "durum": "veriyok", "ad": "Oto bayraklar",
+                       "not": "Fiyat/hacim verisi yetersiz — oto tarama yapilamadi."})
+    manuel = manuel or {}; man_yanan = 0; man_degerlendirilen = 0
+    for k, ad, ipucu in MANUEL_BAYRAK:
+        durum = manuel.get(k, "bilinmiyor")
+        if durum == "yanan": man_yanan += 1; man_degerlendirilen += 1
+        elif durum == "temiz": man_degerlendirilen += 1
+        bayrak.append({"kaynak": "manuel", "durum": durum, "ad": ad, "not": ipucu})
+    toplam_yanan = oto_yanan + man_yanan
+    degerlendirilen = (4 if oto_var else 0) + man_degerlendirilen
+    # Oto-YUKSEK (>=2) sinyalini manuel eksigi GORUNTULEMESIN: oto severity taban olur.
+    if toplam_yanan >= 3 or oto_yanan >= 2:
+        kategori, renk = "YUKSEK — guclu tuzak belirtileri", "rust"
+    elif toplam_yanan >= 1:
+        kategori, renk = "ORTA — en az bir bayrak yandi", "amber"
+    else:
+        kategori, renk = "DUSUK — bariz tuzak yok", "teal"
+    return {"yanan": toplam_yanan, "toplam": 10, "degerlendirilen": degerlendirilen,
+            "oto_yanan": oto_yanan, "oto_var": oto_var, "man_yanan": man_yanan,
+            "kategori": kategori, "renk": renk, "bayrak": bayrak}
 
 
 def fetch_bist():
@@ -516,7 +572,7 @@ body{background:var(--ink);color:var(--bone);font-family:var(--body);line-height
 
 <div id="view-detail" class="hidden"></div>
 
-<div class="disc" id="disc">APEX v2.6 · yatirim tavsiyesi degildir · getiri tahmini ~ yazi-tura, kanitlanmis edge degil</div>
+<div class="disc" id="disc">APEX v2.7 · yatirim tavsiyesi degildir · getiri tahmini ~ yazi-tura, kanitlanmis edge degil</div>
 </div>
 
 <script>
@@ -684,7 +740,7 @@ function tuzakKutu(t){
     '<div style="border-top:1px solid var(--line);margin:9px 0 5px"></div>'+
     '<div class="faint" style="font-size:10px;text-transform:uppercase;letter-spacing:.1em">Manuel veri gereken bayraklar \u00b7 ForInvest/takas</div>'+
     mrows+
-    '<div class="faint" style="font-size:11px;margin-top:8px">Oto bayraklar fiyat+hacimden. Tam tuzak profili icin broker/float/takas verisi elle girilmeli. <b>Ters matematik:</b> kazanani bilemeyiz, tuzagi isaretleyebiliriz.</div></div>';
+    '<div class="faint" style="font-size:11px;margin-top:8px">Oto bayraklar fiyat+hacimden. <b>Bu 6 manuel bayragi asagidaki Karar Cercevesi \u2192 Tuzak kontrolu panelinden elle girip tam 10/10 profil cikarabilirsin.</b> Ters matematik: kazanani bilemeyiz, tuzagi isaretleyebiliriz.</div></div>';
 }
 
 /* ---- GRAFIK OGRETMEN (her ogenin anlami + o anki durum) ---- */
@@ -790,8 +846,8 @@ function renderDetail(i){
     '<div id="tab-teknik">'+teknik+'</div>'+
     '<div id="tab-baglam" class="hidden">'+baglam+'</div>'+
     '<div id="tab-sicil" class="hidden">'+sicilT+'</div>'+
-    '<div class="stamp" style="border-left-color:var(--teal);margin-top:18px">Analist hedefi senaryosu icin '+
-    'sayfanin altindaki <b>Karar Cercevesi</b> panelini kullan — gordugun rakami buraya girersin.</div>';
+    '<div class="stamp" style="border-left-color:var(--teal);margin-top:18px">Analist hedefi senaryosu ve '+
+    '<b>10/10 tuzak kontrolu</b> icin sayfanin altindaki <b>Karar Cercevesi</b> panelini kullan.</div>';
   document.getElementById('back').onclick=function(){
     v.classList.add('hidden');document.getElementById('view-dash').classList.remove('hidden');
     window.scrollTo(0,0);
@@ -876,6 +932,47 @@ def run_streamlit():
         c1.metric("Mevcut fiyat","\u20BA{}".format(px))
         c2.metric("Yillik oynaklik","%{}".format(sec.get("vol","-")))
         c3.metric("Rejim",{"mevduat":"Mevduat","hisse":"Hisse","notr":"Notr"}.get(data["rejim"]["lehte"],"-"))
+
+        # ── TUZAK KONTROLU (10/10) — ters matematik: once "neden ALMAMALIYIM?" ──
+        with st.expander("\U0001F3AF Tuzak kontrolu (10/10) — once 'neden ALMAMALIYIM?'", expanded=False):
+            oto_t=sec.get("tuzak")
+            ico={"yanan":"\U0001F534","temiz":"\u2705","veriyok":"\u2014"}
+            if oto_t:
+                st.markdown("**Oto bayraklar (fiyat+hacimden) — {}/4 yandi:**".format(oto_t.get("yanan",0)))
+                for b in oto_t.get("bayrak",[]):
+                    st.markdown("{} **{}** — {}".format(ico.get(b[0],""),b[1],b[2]))
+            else:
+                st.caption("Bu hisse icin oto bayrak hesaplanamadi (fiyat/hacim yetersiz).")
+            st.markdown("---")
+            st.caption("Asagidaki 6 bayrak ForInvest/takas verisi ister — elle gir. "
+                       "'Bilmiyorum' birakirsan tuzak SAYILMAZ ama TEMIZ de sayilmaz (kor nokta).")
+            secenek=["— bilmiyorum —","Temiz","\U0001F534 Tuzak (yaniyor)"]
+            harita={"— bilmiyorum —":"bilinmiyor","Temiz":"temiz","\U0001F534 Tuzak (yaniyor)":"yanan"}
+            manuel={}
+            mc1,mc2=st.columns(2)
+            for idx,(k,ad,ipucu) in enumerate(MANUEL_BAYRAK):
+                kol=mc1 if idx%2==0 else mc2
+                sv=kol.selectbox(ad,secenek,index=0,key="tz_"+sec["tk"]+"_"+k,help=ipucu)
+                manuel[k]=harita[sv]
+            birl=tuzak_birlesik(oto_t,manuel)
+            renk_hex={"rust":"#D2715A","amber":"#E0A458","teal":"#4FB8A4"}.get(birl["renk"],"#9AA4A0")
+            bos=10-birl["degerlendirilen"]
+            st.markdown(
+                "<div style='border-left:3px solid {c};padding:10px 14px;background:rgba(255,255,255,.02);"
+                "border-radius:4px;margin-top:6px'>"
+                "<b style='color:{c}'>Tuzak profili: {y}/10 bayrak yandi — {k}</b><br>"
+                "<span style='color:#9AA4A0;font-size:12px'>Oto {oy}/4 + manuel {my}/6 \u00b7 "
+                "degerlendirilen {dg}/10 ({bos} bayrak veri girilmedi).</span></div>".format(
+                    c=renk_hex,y=birl["yanan"],k=birl["kategori"],oy=birl["oto_yanan"],
+                    my=birl["man_yanan"],dg=birl["degerlendirilen"],bos=bos),
+                unsafe_allow_html=True)
+            if birl["yanan"]>=3:
+                st.error("3+ bayrak yandi — klasik tuzak profili. 'Neden ALMAMALIYIM' sorusunun cevabi guclu.")
+            elif birl["degerlendirilen"]<5:
+                st.caption("Profilin yarisindan azi dolduruldu — ForInvest/takas verisini girmeden 'temiz' diyemeyiz.")
+            st.caption("Ters matematik: kazanani bilemeyiz, ama tuzagi bu 10 bayrakla isaretleyebiliriz. "
+                       "Bu bir 'satma' emri DEGIL; karar (ve katalizor) sende.")
+
         cc1,cc2=st.columns(2)
         sermaye=cc1.number_input("Sermayen (\u20BA)",min_value=1000.0,value=100000.0,step=1000.0,key="kc_sermaye")
         entry=cc2.number_input("Dusundugun giris fiyati (\u20BA)",min_value=0.0,value=float(px),step=0.01,key="kc_entry")
@@ -931,7 +1028,7 @@ def run_streamlit():
     with st.expander("Durustluk · sayilar nereden? ({})".format(SURUM)):
         st.write("{} hisse listede · {} tanesi canli veriyle dolu.".format(len(data['stocks']),data['n_veri']))
         st.write("Guven kerterizi amber cunku getiri ekseni ~yazi-tura. Poz = hisse-basi vol-target. "
-                 "Stop = ATR(14)×{}. Canli veri yoksa fiyat UYDURULMAZ.".format(ATR_K_STOP))
+                 "Stop = ATR(14)×{}. 4 oto + 6 manuel tuzak bayragi tek 10/10 profilde. Canli veri yoksa fiyat UYDURULMAZ.".format(ATR_K_STOP))
 
 import sys as _sys
 if "streamlit" in _sys.modules:
