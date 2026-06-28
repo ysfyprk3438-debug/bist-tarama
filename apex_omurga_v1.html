@@ -148,7 +148,9 @@
     <div class="cmd"><span style="font-size:14px">💬</span><span class="ph">"THYAO 290 olursa sat"</span><span class="go">VER</span></div>
     <div class="qbtn"><span>Riski azalt</span><span>Kârı realize et</span><span>Gün sonu kapat</span></div>
   </div>
-  <div class="seclab">En yüksek tahmine göre sıralı · damgalı</div>
+  <div class="seclab">📊 Günün kazananları · gerçek</div>
+  <div id="gainers-list"></div>
+  <div class="seclab">🔮 Modelin tahmini · damgalı</div>
   <div id="trade-rank"></div>
   <div class="flag bad">⚠ Bu sıralama modelin <b>tahminidir</b>, henüz yazı-turayı geçmedi. Sıraya körü körüne girme.</div>
 </div>
@@ -253,6 +255,9 @@ function detay(s){const akd=s.akd.map(m=>`<div class="mo"><div class="lab">${m[0
   <div class="twin"><div><div class="k">Tavsiye</div><div class="v" style="color:${COL[s.dcol]}">${s.dec}</div><div class="s">hedef ${s.hedef} · stop ${s.stop}</div></div>
     <div><div class="k">Bu çağrılarda gerçek isabetim</div><div class="v" style="color:${s.sicil<=52?'var(--dn)':'var(--orange)'}">%${s.sicil}</div><div class="s">≈ ${s.sicil<=52?'yazı-tura':'zayıf'}</div></div></div>
   <div class="flag bad">⚠ Tavsiye yüzdesi modelin tahminidir; gerçek isabetim yanında — tek başına işlem sebebi değil.</div>
+  <div class="seclab">Özet grafik · gerçek fiyat + MA50/MA200 + koni</div>
+  <svg id="dchart" viewBox="0 0 360 220" style="width:calc(100% - 22px);margin:0 11px;height:auto"></svg>
+  <div class="legend" id="dlegend"></div>
   <div class="seclab">Teknik detay tablosu</div>
   <div class="dtab">
     <div class="r"><span class="l">Destek / Direnç</span><span class="v num">${s.destek} / ${s.direnc}</span></div>
@@ -267,15 +272,27 @@ function detay(s){const akd=s.akd.map(m=>`<div class="mo"><div class="lab">${m[0
   <div class="seclab">ForInvest mutabakatı · oto-veri vs manuel</div>
   <div class="recon">${recon}</div>
   <div class="disc">AKD/takas <b>gerçek veridir</b> ama tahmin gücü ölçülür, varsayılmaz — kendi sicilini taşır. Manuel girdiğin doğru kabul edilir; oto-veri çelişirse <b>düzeltilir</b>, sistem zamanla olgunlaşır.</div>`;
+  try{drawDetail(s)}catch(e){}
   E('havuz-list').style.display='none';E('havuz-detail').style.display='block';window.scrollTo(0,0);
   E('back').onclick=()=>{E('havuz-detail').style.display='none';E('havuz-list').style.display='block';window.scrollTo(0,0)};
 }
 E('stocks').addEventListener('click',e=>{const c=e.target.closest('.stk');if(!c)return;detay(APP.stocks[+c.dataset.i])});
 
 /* trade sıralama (tahmin, damgalı) */
-E('trade-rank').innerHTML=APP.stocks.map((s,i)=>`<div class="stk" style="cursor:default"><div class="top">
-  <div class="tk">#${i+1} ${s.tk}</div><div style="text-align:right"><div class="num" style="font-weight:850;color:var(--orange)">+%${(6-i*0.8).toFixed(1)}</div>
-  <div style="font-size:8.5px;font-weight:800;font-family:var(--mono);color:${s.sicil<=52?'#ff7a7a':'var(--orange)'}">sicil %${s.sicil}</div></div></div></div>`).join('');
+(function(){
+  const G=APP.gainers||[],T=APP.tahmin||[];
+  const gh=G.length?G.map((s,i)=>`<div class="stk" style="cursor:default"><div class="top">
+    <div class="tk">${i+1}. ${s.tk}<small>${s.nm}</small></div>
+    <div class="num ${s.ch>=0?'up':'dn'}" style="font-weight:850;font-size:15px">${s.ch>=0?'+':''}%${s.ch}</div></div></div>`).join('')
+    : '<div class="disc">Canlı veri bağlanınca dolacak.</div>';
+  E('gainers-list').innerHTML=gh;
+  const th=T.length?T.map((s,i)=>`<div class="stk" style="cursor:default"><div class="top">
+    <div class="tk">#${i+1} ${s.tk}<small>${s.nm}</small></div>
+    <div style="text-align:right"><div class="num" style="font-weight:850;color:var(--orange)">${s.beklenti>=0?'+':''}%${s.beklenti}</div>
+    <div style="font-size:8.5px;font-weight:800;font-family:var(--mono);color:${s.sicil<=52?'#ff7a7a':'var(--orange)'}">sicil %${s.sicil}</div></div></div></div>`).join('')
+    : '<div class="disc">Canlı veri bağlanınca dolacak.</div>';
+  E('trade-rank').innerHTML=th;
+})();
 
 /* defter */
 (function(){const d=APP.defter;E('bal-v').innerHTML=tl(d.deger);
@@ -286,7 +303,46 @@ E('trade-rank').innerHTML=APP.stocks.map((s,i)=>`<div class="stk" style="cursor:
 
 /* SVG yardımcıları */
 const NS='http://www.w3.org/2000/svg';
-function P(d,s,w,f,dash){const p=document.createElementNS(NS,'path');p.setAttribute('d',d);p.setAttribute('fill',f||'none');if(s){p.setAttribute('stroke',s);p.setAttribute('stroke-width',w||2)}if(dash)p.setAttribute('stroke-dasharray',dash);return p}
+function P(d,s,w,f,dash){const p=document.createElementNS(NS,'path');p.setAttribute('d',d);p.setAttribute('fill',f||'none');if(s){p.setAttribute('stroke',s);p.setAttribute('stroke-width',w||2);p.setAttribute('stroke-linejoin','round')}if(dash)p.setAttribute('stroke-dasharray',dash);return p}
+function _t(sv,x,y,t,c,s,a){const e=document.createElementNS(NS,'text');e.setAttribute('x',x);e.setAttribute('y',y);e.setAttribute('fill',c);e.setAttribute('font-size',s||10);e.setAttribute('font-weight','800');if(a)e.setAttribute('text-anchor',a);e.textContent=t;sv.appendChild(e)}
+function _c(sv,x,y,r,f){const c=document.createElementNS(NS,'circle');c.setAttribute('cx',x);c.setAttribute('cy',y);c.setAttribute('r',r);c.setAttribute('fill',f);sv.appendChild(c)}
+function drawDetail(s){
+  const sv=E('dchart'),lg=E('dlegend');if(!sv)return;sv.innerHTML='';
+  const h=s.hist||[];
+  if(h.length<5){lg.innerHTML='<span style="color:var(--faint)">📡 Grafik canlı fiyat bağlanınca gerçekleşir — sahte çizgi göstermiyoruz.</span>';return;}
+  const m50=s.ma50||[],m200=s.ma200||[];
+  const W=360,x0=6,x1=W-46,yT=12,yB=176,mid=x0+(x1-x0)*0.66,N=h.length;
+  let all=h.concat(m50.filter(v=>v),m200.filter(v=>v));
+  let vmin=Math.min(...all),vmax=Math.max(...all);
+  // koni de hesaba: hedef/stop görünürde kalsın
+  const px=h[N-1];const lo=px*0.82,hi=px*1.30;vmin=Math.min(vmin,lo);vmax=Math.max(vmax,hi);
+  const pad=(vmax-vmin)*0.05||1;vmin-=pad;vmax+=pad;
+  const X=i=>x0+(mid-x0)*(i/(N-1)),Y=v=>yT+(yB-yT)*(1-(v-vmin)/(vmax-vmin));
+  // rejim bandı (son 1/3)
+  const r=document.createElementNS(NS,'rect');r.setAttribute('x',X(Math.floor(N*0.66)));r.setAttribute('y',yT);r.setAttribute('width',mid-X(Math.floor(N*0.66)));r.setAttribute('height',yB-yT);r.setAttribute('fill','rgba(0,209,136,.06)');sv.appendChild(r);
+  // destek/direnç
+  if(typeof s.destek==='number'){sv.appendChild(P(`M${x0},${Y(s.destek)} L${mid},${Y(s.destek)}`,'rgba(255,255,255,.15)',1,null,'1 4'));_t(sv,x0+2,Y(s.destek)-3,'destek','var(--faint)',8);}
+  if(typeof s.direnc==='number')sv.appendChild(P(`M${x0},${Y(s.direnc)} L${x1},${Y(s.direnc)}`,'rgba(255,255,255,.15)',1,null,'1 4'));
+  // koni
+  sv.appendChild(P(`M${mid},${Y(px)} L${x1},${Y(hi)} L${x1},${Y(lo)} Z`,null,0,'rgba(255,162,58,.15)'));
+  sv.appendChild(P(`M${mid},${Y(px)} L${x1},${Y(px*1.05)}`,'var(--orange)',1.6,null,'5 4'));
+  _t(sv,x1+3,Y(hi)+3,'+30%','var(--up)',8.5);_t(sv,x1+3,Y(lo)+3,'−18%','var(--dn)',8.5);
+  // MA200, MA50, fiyat
+  const line=(arr,col,wd)=>{let p='';arr.forEach((v,i)=>{if(v)p+=(p?'L':'M')+X(i).toFixed(1)+','+Y(v).toFixed(1)});if(p)sv.appendChild(P(p,col,wd))};
+  line(m200,'var(--orange)',1.5);line(m50,'var(--blue)',1.6);line(h,'#EDEFF2',2.2);
+  // altın / ölüm kesişimi (MA50 vs MA200)
+  if(m50.length===N&&m200.length===N){let g=-1,d=-1;
+    for(let i=1;i<N;i++){const a=m50[i-1]-m200[i-1],b=m50[i]-m200[i];if(a<0&&b>=0&&g<0)g=i;if(a>0&&b<=0&&d<0)d=i;}
+    const mk=(i,emo,col,stamp)=>{if(i<0)return;_c(sv,X(i),Y(h[i]),4,col);_t(sv,X(i),Y(h[i])-11,emo,'#fff',11,'middle');_t(sv,X(i),Y(h[i])+19,stamp,col,7.5,'middle');};
+    mk(d,'💀','var(--dn)','%38');mk(g,'☀️','var(--gold)','%43');}
+  // bugün + eksen
+  sv.appendChild(P(`M${mid},${yT} L${mid},${yB}`,'rgba(255,255,255,.14)',1,null,'3 3'));
+  _t(sv,mid,yB+14,'bugün','var(--faint)',8.5,'middle');_t(sv,x1,yB+14,'~3 ay','var(--faint)',8.5,'end');_t(sv,x0,yB+14,'1 yıl','var(--faint)',8.5);
+  // kalibrasyon şeridi
+  const rib=yB+30;_t(sv,x0,rib-4,'kalibrasyon: geçmiş sinyaller','var(--faint)',8);
+  [[0.12,1],[0.26,0],[0.4,1],[0.55,0],[0.68,1],[0.82,1]].forEach(m=>{const cx=x0+(mid-x0)*m[0];_c(sv,cx,rib+7,4,m[1]?'var(--up)':'var(--dn)');_t(sv,cx,rib+10,m[1]?'✓':'✗','#021',6.5,'middle')});
+  lg.innerHTML='<span><i style="background:#EDEFF2"></i>Fiyat</span><span><i style="background:var(--blue)"></i>MA50</span><span><i style="background:var(--orange)"></i>MA200</span><span>☀️ altın</span><span>💀 ölüm</span><span><i style="background:rgba(255,162,58,.22)"></i>3-ay koni</span><span><i style="background:var(--up)"></i>✓ tuttu</span>';
+}
 /* equity düz */
 (function(){const sv=E('equity'),W=340,y=55;sv.appendChild(P(`M6,${y} L${W-6},${y}`,'rgba(0,209,136,.55)',2));})();
 /* nabız */
