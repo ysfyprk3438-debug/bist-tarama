@@ -38,7 +38,7 @@ import json, datetime, math, pathlib
 import numpy as np
 
 OUT = "apex.html"
-SURUM = "v3.1"
+SURUM = "v3.2"
 TAHMIN_TAVAN = 40.0
 ATR_K_STOP = 2.0
 ATR_K_HEDEF = 3.0
@@ -580,6 +580,143 @@ def ileri_seri():
                 "dd_sistem":_dd(S),"dd_endeks":_dd(En),"onde":onde[0],"onde_v":onde[1],"n":len(tarih)}
     except Exception:
         return None
+
+# ══════════════════════════════════════════════════════════════
+# KALIBRASYON DEFTERI — sistemin KENDI sinyallerini SINAR (tahmin satmaz)
+# ══════════════════════════════════════════════════════════════
+# Felsefe: bir sinyalin (akis yuklenmesi, tuzak, risk) ima ettigi yonu kaydet,
+# 'ufuk' gun sonra fiyat gercekte ne yapti olc. Isabet = sinyal kac kez tuttu.
+# Placebo cizgisi = %50 (rastgele). Isabet placebo'ya yakinsa -> "yon vermiyor,
+# GUVENME" ve Guven skorunu ASAGI ceker. Amac tahmin DEGIL, oz-denetim.
+# Veri zamanla birikir (gunluk cron). N dusukken sonuc GURULTUDUR, oyle isaretlenir.
+KALIB_DOSYA = "kalibrasyon_defteri.csv"
+KALIB_UFUK = 5                 # kac islem gunu sonra sonuca bakilir
+KALIB_BASLIK = ["tarih","hisse","sinyal","yon","ufuk","giris","sonuc_tarih","cikis","gercek","isabet"]
+
+def _kalib_sinyaller(s):
+    """Bir hisse dict'inden o anki FIRLEYEN sinyalleri + ima ettikleri yonu cikarir.
+    Donen: [(sinyal_adi, yon)] — yon +1 (yukari beklerdi) / -1 (asagi beklerdi).
+    Sadece NET firleyen sinyaller kaydedilir; notr olanlar atlanir.
+    NOT: bu yonlerin DOGRU oldugunu IDDIA ETMIYORUZ — tutup tutmadigini SINIYORUZ.
+    Cogunun ~%50 (placebo) cikmasini bekliyoruz."""
+    out = []
+    ak = s.get("akis")
+    if ak:
+        y = ak.get("yuklenme", 0)
+        if y >= 25: out.append(("akis_yuklenme", 1))
+        elif y <= -25: out.append(("akis_yuklenme", -1))
+    tz = s.get("tuzak")
+    if tz:
+        if int(tz.get("yanan", 0)) >= 2: out.append(("tuzak_yuksek", -1))
+    rs = s.get("risk_skor")
+    try:
+        if rs not in (None, "-") and float(rs) >= 60: out.append(("risk_yuksek", -1))
+    except Exception:
+        pass
+    ks = s.get("kesisim")
+    if isinstance(ks, dict):
+        t = (ks.get("tip") or "").lower()
+        if "golden" in t or "altin" in t: out.append(("ma_kesisim", 1))
+        elif "death" in t or "olum" in t: out.append(("ma_kesisim", -1))
+    return out
+
+def kalibrasyon_kaydet(bugun, data, ufuk=KALIB_UFUK):
+    """O gunun firleyen sinyallerini deftere ACIK kayit olarak ekler (idempotent).
+    Sonuc alanlari bos baslar, vade dolunca dolar. Eklenen kayit sayisini dondurur."""
+    import csv as _csv
+    bugun = bugun.isoformat() if hasattr(bugun, "isoformat") else str(bugun)
+    p = pathlib.Path(KALIB_DOSYA); mevcut = set(); satirlar = []
+    if p.exists():
+        try:
+            with open(p, encoding="utf-8") as f:
+                for row in _csv.DictReader(f):
+                    satirlar.append(row); mevcut.add((row.get("tarih"), row.get("hisse"), row.get("sinyal")))
+        except Exception:
+            satirlar = []; mevcut = set()
+    yeni = 0
+    for s in data.get("stocks", []):
+        if not s.get("veri"): continue
+        try: giris = float(s.get("px"))
+        except Exception: continue
+        for sinyal, yon in _kalib_sinyaller(s):
+            if (bugun, s["tk"], sinyal) in mevcut: continue
+            satirlar.append({"tarih": bugun, "hisse": s["tk"], "sinyal": sinyal, "yon": yon,
+                             "ufuk": ufuk, "giris": giris, "sonuc_tarih": "", "cikis": "",
+                             "gercek": "", "isabet": ""})
+            mevcut.add((bugun, s["tk"], sinyal)); yeni += 1
+    try:
+        with open(p, "w", encoding="utf-8", newline="") as f:
+            w = _csv.DictWriter(f, fieldnames=KALIB_BASLIK); w.writeheader()
+            for r in satirlar: w.writerow({k: r.get(k, "") for k in KALIB_BASLIK})
+    except Exception:
+        return 0
+    return yeni
+
+def kalibrasyon_sonuclandir(bugun, fiyatlar):
+    """Vadesi dolmus ACIK kayitlari guncel fiyatla kapatir, isabet isaretler.
+    fiyatlar: {hisse: guncel_fiyat}. gercek = sign(cikis/giris-1)."""
+    import csv as _csv, datetime as _dt
+    p = pathlib.Path(KALIB_DOSYA)
+    if not p.exists(): return 0
+    bug = bugun if hasattr(bugun, "toordinal") else _dt.date.fromisoformat(str(bugun))
+    try:
+        with open(p, encoding="utf-8") as f: satirlar = list(_csv.DictReader(f))
+    except Exception:
+        return 0
+    kapatilan = 0
+    for r in satirlar:
+        if (r.get("isabet") or "") != "": continue
+        try: kt = _dt.date.fromisoformat(r["tarih"]); uf = int(r["ufuk"])
+        except Exception: continue
+        if (bug - kt).days < uf: continue
+        px = fiyatlar.get(r["hisse"])
+        if px in (None, "-", ""): continue
+        try: giris = float(r["giris"]); cikis = float(px); yon = int(r["yon"])
+        except Exception: continue
+        gercek = 1 if cikis > giris else (-1 if cikis < giris else 0)
+        r["sonuc_tarih"] = bug.isoformat(); r["cikis"] = cikis
+        r["gercek"] = gercek; r["isabet"] = (1 if (gercek != 0 and yon == gercek) else 0)
+        kapatilan += 1
+    if kapatilan:
+        try:
+            with open(p, "w", encoding="utf-8", newline="") as f:
+                w = _csv.DictWriter(f, fieldnames=KALIB_BASLIK); w.writeheader()
+                for r in satirlar: w.writerow({k: r.get(k, "") for k in KALIB_BASLIK})
+        except Exception:
+            return 0
+    return kapatilan
+
+def kalibrasyon_ozet():
+    """Sinyal-bazli + TOPLAM isabet ozeti. Defter yok/bos -> None (UYDURMA YOK)."""
+    import csv as _csv
+    p = pathlib.Path(KALIB_DOSYA)
+    if not p.exists(): return None
+    try:
+        with open(p, encoding="utf-8") as f: rows = list(_csv.DictReader(f))
+    except Exception:
+        return None
+    grup = {}; acik = 0
+    for r in rows:
+        if (r.get("isabet") or "") == "": acik += 1; continue
+        try: h = int(r["isabet"])
+        except Exception: continue
+        g = grup.setdefault(r.get("sinyal","?"), {"n":0,"h":0}); g["n"] += 1; g["h"] += h
+    def _etiket(n, pct):
+        if n < 30: return ("yetersiz", "Gurultu — guvenilir yargi icin >=30 kapali kayit gerek.")
+        if 42 <= pct <= 58: return ("placebo", "Yazi-tura seviyesi — bu sinyal yon VERMIYOR.")
+        if n >= 50: return ("aday", "Placebo disinda — izlenmeye deger AMA hala kanit degil.")
+        return ("izlenmeli", "Placebo disinda ama N dusuk — birikmesini bekle.")
+    sinyaller = []; tn = th = 0
+    for ad, g in sorted(grup.items()):
+        pct = round(g["h"]/g["n"]*100, 1) if g["n"] else 0.0
+        et, ac = _etiket(g["n"], pct)
+        sinyaller.append({"sinyal": ad, "n": g["n"], "isabet": pct, "etiket": et, "aciklama": ac})
+        tn += g["n"]; th += g["h"]
+    toplam_pct = round(th/tn*100, 1) if tn else None
+    t_et, t_ac = _etiket(tn, toplam_pct if toplam_pct is not None else 0)
+    return {"sinyaller": sinyaller, "toplam_n": tn, "toplam_isabet": toplam_pct,
+            "toplam_etiket": t_et, "toplam_aciklama": t_ac, "acik_kayit": acik, "placebo": 50}
+
 
 def senaryo_cerceve(px, hedef, vol_pct, atr):
     if not px or px <= 0:
@@ -1405,6 +1542,38 @@ def run_streamlit():
                                    "tek faydasi stop'unun normal dalgalanmanin icinde olup olmadigini gormek.")
                 st.info("Sistemin sana SOYLEMEDIGI: bu hisse cikar mi (~yazi-tura, edge yok). SOYLEDIGI: "
                         "ne kadar koy, nerede dur, belirsizlik ne kadar genis. Secim + katalizor sende.")
+    st.markdown("---")
+    st.subheader("\U0001F4D0 Kalibrasyon — sistem kendi sinyallerini siniyor")
+    st.caption("Her sinyalin (akis yuklenmesi, tuzak, risk, MA kesisimi) ima ettigi yon "
+               "{} gun sonra TUTTU MU? Placebo = %50 (rastgele). Isabet placebo'ya yakinsa "
+               "o sinyal YON VERMIYOR demektir — ve Guven skorunu asagi ceker. "
+               "Bu tahmin DEGIL, oz-denetim.".format(KALIB_UFUK))
+    _koz = kalibrasyon_ozet()
+    if not _koz or not _koz.get("sinyaller"):
+        _ack = (_koz or {}).get("acik_kayit", 0)
+        st.info("Defter henuz bos ya da kapanmis kayit yok. Her gun sinyaller kaydedilir, "
+                "{} gun sonra sonuclanir; isabet birikince burada durustce gosterilir. "
+                "{} acik (vadesi dolmamis) kayit var. UYDURMA YOK — veri gelene kadar yargi yok.".format(
+                    KALIB_UFUK, _ack))
+    else:
+        renk={"placebo":"#D2715A","yetersiz":"#9AA4A0","izlenmeli":"#E0A458","aday":"#4FB8A4"}
+        ti=_koz["toplam_isabet"]; tet=_koz["toplam_etiket"]
+        st.markdown("<div style='border-left:3px solid {c};padding:10px 14px;background:rgba(255,255,255,.02);"
+                    "border-radius:4px'><b style='color:{c}'>TOPLAM isabet: {i} &nbsp;(placebo %50) &middot; {et}</b>"
+                    "<br><span style='color:#9AA4A0;font-size:12px'>{n} kapali kayit \u00b7 {a} acik \u00b7 {ac}</span></div>".format(
+                        c=renk.get(tet,"#9AA4A0"),
+                        i=("%"+str(ti) if ti is not None else "—"),
+                        et=tet.upper(),n=_koz["toplam_n"],a=_koz["acik_kayit"],ac=_koz["toplam_aciklama"]),
+                    unsafe_allow_html=True)
+        for sg in _koz["sinyaller"]:
+            c=renk.get(sg["etiket"],"#9AA4A0")
+            st.markdown("<div style='font-size:13px;margin:4px 0'>"
+                        "<b style='color:{c}'>{s}</b> &middot; isabet <b>%{i}</b> "
+                        "<span style='color:#9AA4A0'>(N={n} \u00b7 {et}) — {ac}</span></div>".format(
+                            c=c,s=sg["sinyal"],i=sg["isabet"],n=sg["n"],et=sg["etiket"],ac=sg["aciklama"]),
+                        unsafe_allow_html=True)
+        st.caption("Hatirla: yuzde ne derse ona uyariz. 'Placebo' diyen sinyale guvenmeyiz — fikir bizim olsa bile.")
+
     with st.expander("Durustluk · sayilar nereden? ({})".format(SURUM)):
         st.write("{} hisse listede · {} tanesi canli veriyle dolu.".format(len(data['stocks']),data['n_veri']))
         st.write("Guven kerterizi amber cunku getiri ekseni ~yazi-tura. Poz = hisse-basi vol-target. "
