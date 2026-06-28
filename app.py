@@ -19,7 +19,7 @@ import numpy as np
 
 TEMPLATE = "apex_omurga_v1.html"
 OUT = "apex.html"
-SURUM = "v1.4"                 # <-- her deploy'da artir: v1.5, v1.6 ... (cache tazelenir)
+SURUM = "v1.5"                 # <-- her deploy'da artir: v1.6, v1.7 ... (cache tazelenir)
 TAHMIN_TAVAN = 40.0           # tahmin gosterim tavani (+-%)
 ATR_K_STOP = 2.0             # stop = fiyat - K * ATR
 ATR_K_HEDEF = 3.0            # kirilim varsa hedef = fiyat + K * ATR
@@ -221,7 +221,8 @@ def run_streamlit():
                     if pd.notna(sg): s*=(1+float(sg)/100)
                     E.append(round(e,2)); M.append(round(m,2)); S.append(round(s,2))
                 cg=pd.DataFrame({"Sistem (stance)":S,"Endeks":E,"Mevduat":M},index=list(g["tarih"]))
-                st.line_chart(cg,height=240)
+                st.line_chart(cg, y=["Sistem (stance)","Endeks","Mevduat"],
+                              color=["#f59e0b","#3b82f6","#9ca3af"], height=240)  # amber/mavi/gri
                 st.caption("N={} gun . baslangic=100 . Sistem {} . Endeks {} . Mevduat {}".format(len(g),S[-1],E[-1],M[-1]))
                 st.caption("Durust okuma: Sistem mevduati VE endeksi yendi mi? Tek-iki gun anlamsiz; N buyudukce sicil olusur.")
             else:
