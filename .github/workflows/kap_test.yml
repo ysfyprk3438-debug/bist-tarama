@@ -1,0 +1,11 @@
+name: kap-test
+on:
+  workflow_dispatch:
+
+jobs:
+  kap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: KAP baglanti testi
+        run: python kap_oku.py
