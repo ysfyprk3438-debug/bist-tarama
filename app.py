@@ -19,7 +19,7 @@ import numpy as np
 
 TEMPLATE = "apex_omurga_v1.html"
 OUT = "apex.html"
-SURUM = "v1.6"                 # <-- her deploy'da artir: v1.7, v1.8 ... (cache tazelenir)
+SURUM = "v1.7"                 # <-- her deploy'da artir: v1.8, v1.9 ... (cache tazelenir)
 TAHMIN_TAVAN = 40.0           # tahmin gosterim tavani (+-%)
 ATR_K_STOP = 2.0             # stop = fiyat - K * ATR
 ATR_K_HEDEF = 3.0            # kirilim varsa hedef = fiyat + K * ATR
@@ -137,6 +137,35 @@ def fetch_bist():
             continue
     return out
 
+def ileri_seri():
+    """ileri_gunluk.csv -> kumulatif seri (100'den) + MaxDD + onde. HTML+panel ortak kaynak."""
+    p=pathlib.Path("ileri_gunluk.csv")
+    if not p.exists(): return None
+    try:
+        import csv as _csv
+        tarih=[]; S=[]; En=[]; M=[]; e=m=s=100.0
+        with open(p,encoding="utf-8") as f:
+            for row in _csv.DictReader(f):
+                eg=(row.get("endeks_gun%") or "").strip()
+                mg=(row.get("mevduat_gun%") or "").strip()
+                sg=(row.get("stance_gun%") or "").strip()
+                if eg: e*=(1+float(eg)/100)
+                if mg: m*=(1+float(mg)/100)
+                if sg: s*=(1+float(sg)/100)
+                tarih.append((row.get("tarih") or "").strip())
+                S.append(round(s,2)); En.append(round(e,2)); M.append(round(m,2))
+        if not tarih: return None
+        def _dd(seri):
+            tepe=seri[0]; dd=0.0
+            for x in seri:
+                tepe=max(tepe,x); dd=min(dd,(x/tepe-1)*100)
+            return round(dd,2)
+        onde=max([("Sistem",S[-1]),("Endeks",En[-1]),("Mevduat",M[-1])],key=lambda t:t[1])
+        return {"tarih":tarih,"sistem":S,"endeks":En,"mevduat":M,
+                "dd_sistem":_dd(S),"dd_endeks":_dd(En),"onde":onde[0],"onde_v":onde[1],"n":len(tarih)}
+    except Exception:
+        return None
+
 def build_app_data(bugun=None, veri=None):
     bugun=bugun or datetime.date.today()
     rej=rejim_hesapla(bugun); risk=risk_pozisyon(rej["lehte"]); n_gun=2
@@ -184,12 +213,29 @@ def build_app_data(bugun=None, veri=None):
             "master":{"q":q,"skor":merkez,"verdict":verdict},"ajanlar":ajan,
             "stocks":stocks,"gainers":gainers,"tahmin":tahmin,
             "defter":{"deger":100000,"nakit":100000,"pozisyon":0,"maliyet":0,"gz_acik":0,"gz_kapali":0,"komisyon":0},
+            "ileri":ileri_seri(),
             "nabiz":{"lab":"Baglaninca","val":0.5,"sub":"ekonomi RSS baglaninca dolacak (Twitter/X ayri faz)",
                      "haber":[["-","Haber beslemesi henuz bagli degil","0.0","m"]]}}
+
+_EQ_ESKI = "(function(){const sv=E('equity'),W=340,y=55;sv.appendChild(P(`M6,${y} L${W-6},${y}`,'rgba(0,209,136,.55)',2));})();"
+_EQ_YENI = ("(function(){const sv=E('equity'),W=340,x0=6,x1=W-6,yT=10,yB=92;const il=APP.ileri;"
+            "if(!il||!il.sistem||!il.sistem.length){sv.appendChild(P(`M${x0},55 L${x1},55`,'rgba(0,209,136,.55)',2));return;}"
+            "const S=il.sistem,En=il.endeks,M=il.mevduat,N=S.length;const all=S.concat(En,M);"
+            "let vmin=Math.min(...all),vmax=Math.max(...all);if(vmax-vmin<0.6){vmin-=0.6;vmax+=0.6;}"
+            "const pad=(vmax-vmin)*0.08;vmin-=pad;vmax+=pad;"
+            "const X=i=>N<=1?(x0+x1)/2:x0+(x1-x0)*(i/(N-1)),Y=v=>yT+(yB-yT)*(1-(v-vmin)/(vmax-vmin));"
+            "const ln=(arr,c,w,dash)=>{if(N===1){_c(sv,X(0),Y(arr[0]),3,c);return;}let p='';"
+            "arr.forEach((v,i)=>{p+=(p?'L':'M')+X(i).toFixed(1)+','+Y(v).toFixed(1)});sv.appendChild(P(p,c,w,dash))};"
+            "ln(M,'#9ca3af',1.3,'3 3');ln(En,'var(--blue)',1.6);ln(S,'var(--orange)',2.4);"
+            "_t(sv,x0,yB+14,'baslangic 100','var(--faint)',8.5);_t(sv,x1,yB+14,'bugun','var(--faint)',8.5,'end');"
+            "const stt=E('eq-stat');if(stt)stt.innerHTML=`N=${N} \u00b7 \u00d6NDE <b style=\"color:var(--orange)\">${il.onde}</b> (${il.onde_v}) \u00b7 MaxDD Sistem ${il.dd_sistem}% \u00b7 Endeks ${il.dd_endeks}%`;})();")
+_CAP_ESKI = '<div class="disc" style="padding:8px 0 0">Düz çizgi normal — <b>henüz işlem yok.</b> Gerçek al-sat oldukça şekillenir; sahte +%142 yok.</div>'
+_CAP_YENI = '<div class="disc" style="padding:8px 0 0"><b>İleri-test eğrisi</b> · Sistem amber · Endeks mavi · Mevduat gri — 100\'den. <span id="eq-stat"></span> · her iş günü otomatik uzar.</div>'
 
 def build_html(veri=None):
     data=build_app_data(veri=veri)
     tpl=pathlib.Path(TEMPLATE).read_text(encoding="utf-8")
+    tpl=tpl.replace(_EQ_ESKI,_EQ_YENI).replace(_CAP_ESKI,_CAP_YENI)   # duz cizgi -> ileri-test egrisi
     inject="<script>window.__APP_DATA__ = "+json.dumps(data,ensure_ascii=False)+";</script>\n"
     return tpl.replace("<script>",inject+"<script>",1), data
 
@@ -204,45 +250,6 @@ def run_streamlit():
         return fetch_bist()
     html,data=build_html(veri=_veri())
     components.html(html,height=820,scrolling=True)
-
-    # --- ILERI-TEST PANELI (otomatik: ileri_gunluk.csv'den, GitHub Actions her gun besler) ---
-    st.markdown("### \U0001F4C8 Ileri-test . canli birikim")
-    st.caption("Sistemin REJIM-DURUS disiplini vs duz endeks vs mevduat. Getiri tahmini (yazi-tura) burada DEGIL.")
-    try:
-        import pandas as pd
-        if pathlib.Path("ileri_gunluk.csv").exists():
-            g=pd.read_csv("ileri_gunluk.csv").dropna(subset=["tarih"])
-            if len(g)>=1:
-                e=m=s=100.0; E=[]; M=[]; S=[]
-                for _,r in g.iterrows():
-                    eg=r.get("endeks_gun%"); mg=r.get("mevduat_gun%"); sg=r.get("stance_gun%")
-                    if pd.notna(eg): e*=(1+float(eg)/100)
-                    if pd.notna(mg): m*=(1+float(mg)/100)
-                    if pd.notna(sg): s*=(1+float(sg)/100)
-                    E.append(round(e,2)); M.append(round(m,2)); S.append(round(s,2))
-                cg=pd.DataFrame({"Sistem (stance)":S,"Endeks":E,"Mevduat":M},index=list(g["tarih"]))
-                st.line_chart(cg, y=["Sistem (stance)","Endeks","Mevduat"],
-                              color=["#f59e0b","#3b82f6","#9ca3af"], height=240)  # amber/mavi/gri
-                # getiri ozeti
-                c1,c2,c3=st.columns(3)
-                c1.metric("Sistem", S[-1]); c2.metric("Endeks", E[-1]); c3.metric("Mevduat", M[-1])
-                # RISK ekseni (APEX'in dogrulanmis degeri): MaxDD kucuk = iyi risk disiplini
-                def _maxdd(seri):
-                    tepe=seri[0]; dd=0.0
-                    for x in seri:
-                        tepe=max(tepe,x); dd=min(dd,(x/tepe-1)*100)
-                    return round(dd,2)
-                ddS,ddE=_maxdd(S),_maxdd(E)
-                onde=max([("Sistem",S[-1]),("Endeks",E[-1]),("Mevduat",M[-1])],key=lambda t:t[1])
-                st.caption("N={} gun . baslangic=100 . su an ONDE: **{}** ({})".format(len(g),onde[0],onde[1]))
-                st.caption("Risk (MaxDD) — APEX'in dogrulanmis ekseni: Sistem **{}%** . Endeks {}% . (kucuk DD = iyi risk disiplini)".format(ddS,ddE))
-                st.caption("Durust okuma: getiri yarisinda lider degisir; ASIL bakilacak Sistem'in DD'yi endeksten kucuk tutmasi. N buyudukce netlesir.")
-            else:
-                st.info("Henuz veri yok.")
-        else:
-            st.info("ileri_gunluk.csv yok - GitHub Actions ilk calismada olusturur (her is gunu 18:30 TR).")
-    except Exception as _ex:
-        st.caption("Ileri-test paneli okunamadi: {}".format(_ex))
 
     n=len([s for s in data["stocks"] if isinstance(s["px"],(int,float))])
     if not data["canli"]:
