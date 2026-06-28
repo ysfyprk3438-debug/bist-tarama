@@ -1,6 +1,6 @@
 # APEX — İleri Durum (Rejim Pusulası + Kağıt-Test)
 
-_Son güncelleme: 2026-06-28 00:47 · veri tarihi 2026-06-26_
+_Son güncelleme: 2026-06-28 00:53 · veri tarihi 2026-06-26_
 
 ## Bugünün duruşu
 
