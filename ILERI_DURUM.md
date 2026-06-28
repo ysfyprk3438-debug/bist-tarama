@@ -1,6 +1,6 @@
 # APEX — İleri Durum (Rejim Pusulası + Kağıt-Test)
 
-_Son güncelleme: 2026-06-28 03:08 · veri tarihi 2026-06-25_
+_Son güncelleme: 2026-06-28 03:11 · veri tarihi 2026-06-26_
 
 ## Bugünün duruşu
 
@@ -22,9 +22,9 @@ _(saf vol-hedef %2.1 × rejim tilt 0.5 · DD bütçesi %1.5)_
 | DD bütçesi | İmâ edilen hisse % (saf vol-hedef) |
 |---|---:|
 | %1.5 | %2.1 |
-| %5.0 | %6.9 |
-| %10.0 | %13.8 |
-| %20.0 | %27.7 |
+| %5.0 | %7.0 |
+| %10.0 | %14.0 |
+| %20.0 | %28.0 |
 
 > **Vol-hedefleme risk yönetimidir, getiri tahmini DEĞİL.** Pozisyonu oynaklığa göre ölçekler, 'ya hep ya hiç'i önler. DD→vol dönüşümü kaba kuraldır (k=2.5), garanti değil. Tablo acı gerçeği gösterir: dar DD bütçesi = küçük hisse maruziyeti. Bütçeyi gevşetmek daha çok hisse demek — ama daha çok da düşüş riski.
 
