@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+I#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-APEX — v2.0 · KURUMSAL ARAYUZ (self-contained) · GERCEK VERI · DURUST CERCEVE
+APEX — v2.5 · KURUMSAL ARAYUZ (self-contained) · GERCEK VERI · DURUST CERCEVE
 Tasarim tezi: "olcum aleti" — kalibre edilmis supheyi on plana koyan bir
 navigasyon/olcu cihazi. Pusula metaforu. Amber = guven (supheli), teal =
 dogrulanmis eksen (risk disiplini), pas-kirmizi = olgusal negatif.
@@ -11,8 +11,9 @@ Onceki surumlerden devam eden DURUSTLUK cekirdegi (degismedi):
   - Dogrulanmis eksen: hisse-basi vol-target Poz + ATR(14) stop.
   - Canli veri yoksa FIYAT UYDURULMAZ ("—" gosterilir). Sahte Sharpe yok.
 
-v1.9 -> v2.0: motor ayni; sunum katmani komple yenilendi ve apex_omurga_v1.html
-sablon bagimliligi KALDIRILDI (HTML artik bu dosyada gomulu — tek dosya deploy).
+v2.5 -> v2.6: Teknik sekmesine 3 ekleme — Grafik Ogretmen (her ogenin anlami +
+o anki durum), Dusus Riski kutusu (tersinden: "buradan dusus normal mi"),
+Projektor konisi (fiyat cizgisinin sagindan acilan yonsuz 5-gun hunisi).
 
 requirements.txt:  streamlit  yfinance  numpy
 """
@@ -20,7 +21,7 @@ import json, datetime, math, pathlib
 import numpy as np
 
 OUT = "apex.html"
-SURUM = "v2.5"
+SURUM = "v2.6"
 TAHMIN_TAVAN = 40.0
 ATR_K_STOP = 2.0
 ATR_K_HEDEF = 3.0
@@ -110,10 +111,7 @@ def atr_hesapla(high,low,close,n=14):
     return float(np.mean(tr[-n:])) if len(tr)>=n else float(np.mean(tr))
 
 def kesisim_analiz(close, disp_n=None):
-    """MA50/MA200 altin (50>200) ve olum (50<200) kesisimleri — OLGUSAL.
-    Geri doner: son kesisim tipi+kac gun once, mevcut MA50-MA200 farki (%) ve daralma yonu,
-    mekanik kalan-gun tahmini (DAMGALI), ve bu hissede gecmis altin kesisimden K gun sonraki
-    medyan getiri (geçmis olgu, edge DEGIL). Tahmin/al-sat URETMEZ."""
+    """MA50/MA200 altin (50>200) ve olum (50<200) kesisimleri — OLGUSAL."""
     c=np.asarray(close,float); n=len(c)
     if n<210:
         return {"yeterli":False}
@@ -144,6 +142,48 @@ def kesisim_analiz(close, disp_n=None):
     return {"yeterli":True,"son_tip":(son[1] if son else None),"gun_once":gun_once,
             "gap_pct":gap_pct,"gap_yon":gap_yon,"proj":proj,"post":post,"markers":markers}
 
+def _dusus_riski(close):
+    """TERSINDEN risk: 'buradan dusus normal karsilanir mi'. Yukari tahmininden
+    daha durust — dusus riski/trend bozulmasi/oynaklik OLCULEBILIR. 'Kesin duser' DEMEZ."""
+    c=np.asarray(close,float)
+    if len(c)<60: return None
+    m50=np.asarray(ma(c,50),float); m200=np.asarray(ma(c,200),float)
+    px=float(c[-1]); skor=0; bayrak=[]
+    if m50[-1]<m200[-1]:
+        skor+=30; bayrak.append(["Olum kesisimi bolgesi","MA50, MA200'un altinda — yapisal dusus trendi."])
+    if px<m200[-1]:
+        skor+=20; bayrak.append(["Uzun vade kirik","Fiyat MA200'un altinda — ana trend ayi tarafinda."])
+    diff=m50-m200; son_tip=None; gun_once=None; start=min(200,len(c)-2)
+    for i in range(start+1,len(c)):
+        if diff[i-1]>=0 and diff[i]<0: son_tip="olum"; gun_once=len(c)-1-i
+        elif diff[i-1]<=0 and diff[i]>0: son_tip="altin"; gun_once=len(c)-1-i
+    if son_tip=="olum" and gun_once is not None and gun_once<=20:
+        skor+=15; bayrak.append(["Taze olum kesisimi",str(gun_once)+" gun once olum kesisimi — bozulma yeni."])
+    r=np.diff(c)/c[:-1]; neg=r[r<0]
+    dvol=float(np.std(neg)*100) if len(neg)>5 else 0.0
+    if dvol>3.5:
+        skor+=15; bayrak.append(["Yuksek dusus oynakligi","Dusus gunlerinde ~%"+str(round(dvol,1))+" oynaklik — sert kayip riski."])
+    if len(c)>=22:
+        ay1=(px/float(c[-22])-1)*100
+        if ay1<-8:
+            skor+=20; bayrak.append(["Negatif momentum","Son 1 ayda %"+str(round(ay1,1))+" — dusus ivmesi var."])
+    skor=int(min(100,skor))
+    if skor>=60: karar="KACIN — buradan dusus normal karsilanir"; renk="rust"
+    elif skor>=30: karar="DIKKATLI — zayiflik isaretleri var"; renk="amber"
+    else: karar="TEMIZ — bariz dusus sinyali yok"; renk="teal"
+    return {"skor":skor,"karar":karar,"renk":renk,"bayrak":bayrak}
+
+def _kisa_koni(px, vol_frac, gun=5):
+    """Yonsuz (drift=0) 5-gun projektor konisi. Her gun icin %80 bandin alt/ust
+    fiyati. KEHANET DEGIL — belirsizligin GENISLIGI. Yon URETMEZ."""
+    if not px or px<=0: return None
+    sig=max(float(vol_frac or 0.29),0.05)/math.sqrt(252.0)
+    out=[]
+    for t in range(1,gun+1):
+        s=sig*math.sqrt(t)
+        out.append({"ust":round(px*math.exp(1.282*s),2),"alt":round(px*math.exp(-1.282*s),2)})
+    return out
+
 def fetch_bist():
     try:
         import yfinance as yf
@@ -168,7 +208,8 @@ def fetch_bist():
             out[s]={"px":round(px,2),"ch":ch,
                     "hist":downsample(c[-D:]),"ma50":downsample(ma50f[-D:]),"ma200":downsample(ma200f[-D:]),
                     "rsi":rsi(c),"destek":round(lo,2),"direnc":round(hi,2),
-                    "ay3":ay3,"vol":round(vol,3),"atr":round(atr,2),"kesisim":kesisim_analiz(c,disp_n=D)}
+                    "ay3":ay3,"vol":round(vol,3),"atr":round(atr,2),"kesisim":kesisim_analiz(c,disp_n=D),
+                    "risk_dusus":_dusus_riski(c),"cone":_kisa_koni(px,vol,gun=5)}
         except Exception:
             continue
     return out
@@ -202,8 +243,6 @@ def ileri_seri():
         return None
 
 def senaryo_cerceve(px, hedef, vol_pct, atr):
-    """Analist hedefini bu hissenin KENDI oynakligina gore baglama oturtur.
-    Tahmin/yon/al-sat URETMEZ; sadece: mesafe buyuk mu kucuk mu + guvenilirlik notu."""
     if not px or px <= 0:
         return None
     fark = (float(hedef) / float(px) - 1.0) * 100.0
@@ -226,11 +265,6 @@ def senaryo_cerceve(px, hedef, vol_pct, atr):
             "sigma_pct":round(sigma*100),"buyukluk":buyukluk,"bnot":bnot,"yon":yon}
 
 def monte_carlo(entry, vol_pct, gun=20, n=4000, stop=None, hedef=None, seed=42):
-    """DURUST Monte Carlo = belirsizlik konisi, KEHANET DEGIL.
-    Hissenin KENDI oynakligiyla, YONSUZ (drift=0) binlerce yol simule eder.
-    Cikti: gun sonundaki fiyat dagiliminin %5/%50/%95 yuzdelikleri (medyan ~ bugun,
-    cunku yon tahmini YOK) + salt-gurultuyle stop/hedefe degme olasiligi (yonsuz).
-    Yon/al-sat URETMEZ; sadece belirsizligin GENISLIGINI olcer."""
     if not entry or entry<=0 or not vol_pct: return None
     sig=max(float(vol_pct)/100.0,0.05)/math.sqrt(252.0)
     rng=np.random.default_rng(seed)
@@ -247,9 +281,6 @@ def monte_carlo(entry, vol_pct, gun=20, n=4000, stop=None, hedef=None, seed=42):
     return res
 
 def karar_cercevesi(entry, hedef, vol_pct, atr, sermaye, lehte, teknik_hedef=None):
-    """SEC kararini (kullanici verdi) OLCULU plana cevirir. AL-SAT URETMEZ.
-    Sistem 'NE alacagini' soylemez (o sende: katalizor+kanaat); 'NE KADAR' ve
-    'NEREYE KADAR'i verir. Tum cikti risk ekseninden (dogrulanmis), tahminden degil."""
     if not entry or entry<=0: return None
     atr=float(atr) if atr else entry*0.02
     stop=round(max(entry-ATR_K_STOP*atr, entry*0.6),2)
@@ -270,7 +301,6 @@ def build_app_data(bugun=None, veri=None):
     rej=rejim_hesapla(bugun)
     veri=veri if veri is not None else fetch_bist(); canli=len(veri)>0
     il=ileri_seri()
-    # Guven kerterizi: getiri ekseni ~yazi-tura skoru asagi ceker (kasitli amber)
     g,r,rp=49,92,60
     merkez=round(0.55*g+0.30*r+0.15*rp)
     stocks=[]
@@ -289,10 +319,12 @@ def build_app_data(bugun=None, veri=None):
                 "rsi":(d["rsi"] if d["rsi"] is not None else "-"),"destek":d["destek"],"direnc":d["direnc"],
                 "hedef":hedef,"stop":stop,"atr":d.get("atr"),"rr":rr,
                 "ay3":(d["ay3"] if d["ay3"] is not None else "-"),
-                "vol":rp_h["vol_pct"],"poz":rp_h["agirlik_pct"],"kesisim":d.get("kesisim"),"veri":True})
+                "vol":rp_h["vol_pct"],"poz":rp_h["agirlik_pct"],"kesisim":d.get("kesisim"),
+                "risk_dusus":d.get("risk_dusus"),"cone":d.get("cone"),"veri":True})
         else:
             base.update({"px":"-","ch":0,"hist":[],"ma50":[],"ma200":[],"rsi":"-","destek":"-","direnc":"-",
-                "hedef":"-","stop":"-","atr":"-","rr":"-","ay3":"-","vol":"-","poz":"-","kesisim":None,"veri":False})
+                "hedef":"-","stop":"-","atr":"-","rr":"-","ay3":"-","vol":"-","poz":"-","kesisim":None,
+                "risk_dusus":None,"cone":None,"veri":False})
         stocks.append(base)
     verili=[s for s in stocks if s.get("veri")]
     gainers=sorted(verili,key=lambda s:s["ch"],reverse=True)[:6]
@@ -324,20 +356,12 @@ body{background:var(--ink);color:var(--bone);font-family:var(--body);line-height
 .wrap{max-width:980px;margin:0 auto;padding:0 16px 64px}
 .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .up{color:var(--teal)} .dn{color:var(--rust)} .am{color:var(--amber)} .dim{color:var(--dim)} .faint{color:var(--faint)}
-
-/* ---- status rail ---- */
-.rail{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
-  padding:14px 2px;border-bottom:1px solid var(--line);margin-bottom:22px}
+.rail{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:14px 2px;border-bottom:1px solid var(--line);margin-bottom:22px}
 .brand{font-family:var(--disp);font-weight:800;letter-spacing:.14em;font-size:15px}
 .brand .dot{color:var(--amber)}
-.rail .chip{font-family:var(--mono);font-size:11px;color:var(--dim);
-  border:1px solid var(--line);border-radius:2px;padding:3px 8px;letter-spacing:.03em}
+.rail .chip{font-family:var(--mono);font-size:11px;color:var(--dim);border:1px solid var(--line);border-radius:2px;padding:3px 8px;letter-spacing:.03em}
 .rail .grow{flex:1}
-
-/* ---- hero: trust bearing ---- */
-.hero{display:grid;grid-template-columns:auto 1fr;gap:26px;align-items:center;
-  background:linear-gradient(180deg,var(--ink2),var(--ink));border:1px solid var(--line);
-  border-radius:6px;padding:24px;margin-bottom:18px}
+.hero{display:grid;grid-template-columns:auto 1fr;gap:26px;align-items:center;background:linear-gradient(180deg,var(--ink2),var(--ink));border:1px solid var(--line);border-radius:6px;padding:24px;margin-bottom:18px}
 .gauge{width:184px;height:118px;position:relative}
 .gauge .lab{position:absolute;left:0;right:0;top:54px;text-align:center}
 .gauge .lab .num{font-family:var(--disp);font-weight:800;font-size:42px;line-height:1;color:var(--amber)}
@@ -347,26 +371,18 @@ body{background:var(--ink);color:var(--bone);font-family:var(--body);line-height
 .axes{display:flex;gap:18px;margin-top:14px}
 .axes .ax{font-family:var(--mono);font-size:11px;color:var(--dim);display:flex;align-items:center;gap:6px}
 .axes .pip{width:7px;height:7px;border-radius:50%}
-
-/* ---- readout cards ---- */
 .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:22px}
 .card{background:var(--ink2);border:1px solid var(--line);border-radius:6px;padding:16px}
-.card .k{font-family:var(--mono);font-size:10px;letter-spacing:.16em;color:var(--faint);
-  text-transform:uppercase;margin-bottom:9px}
+.card .k{font-family:var(--mono);font-size:10px;letter-spacing:.16em;color:var(--faint);text-transform:uppercase;margin-bottom:9px}
 .card .v{font-family:var(--disp);font-weight:600;font-size:24px;letter-spacing:.01em}
 .card .s{font-size:12px;color:var(--dim);margin-top:5px}
 .card .micro{margin-top:10px;height:1px;background:var(--line)}
-
-/* ---- section heads ---- */
 .sec{display:flex;align-items:baseline;gap:10px;margin:26px 0 12px}
 .sec h3{font-family:var(--disp);font-weight:600;font-size:13px;letter-spacing:.16em;text-transform:uppercase}
 .sec .ln{flex:1;height:1px;background:var(--line)}
 .sec .meta{font-family:var(--mono);font-size:11px;color:var(--faint)}
-
-/* ---- pool table ---- */
 .pool{border:1px solid var(--line);border-radius:6px;overflow:hidden}
-.row{display:grid;grid-template-columns:84px 1fr 78px 64px 56px 62px;gap:8px;align-items:center;
-  padding:11px 14px;border-bottom:1px solid var(--line);cursor:pointer;transition:background .12s}
+.row{display:grid;grid-template-columns:84px 1fr 78px 64px 56px 62px;gap:8px;align-items:center;padding:11px 14px;border-bottom:1px solid var(--line);cursor:pointer;transition:background .12s}
 .row:last-child{border-bottom:none}
 .row:hover{background:var(--ink3)}
 .row.head{cursor:default;background:var(--ink2);position:sticky;top:0}
@@ -377,32 +393,25 @@ body{background:var(--ink);color:var(--bone);font-family:var(--body);line-height
 .row .volbar{height:5px;background:var(--ink3);border-radius:3px;overflow:hidden}
 .row .volbar i{display:block;height:100%;background:var(--teal);opacity:.7}
 .scroll{max-height:430px;overflow:auto}
-
-/* ---- detail ---- */
-.back{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:12px;
-  color:var(--teal);cursor:pointer;padding:6px 0;margin-bottom:6px}
+.back{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:12px;color:var(--teal);cursor:pointer;padding:6px 0;margin-bottom:6px}
 .dhead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:4px}
 .dhead .tk{font-family:var(--mono);font-weight:600;font-size:20px}
 .dhead .nm{color:var(--dim)}
 .dhead .px{font-family:var(--disp);font-weight:800;font-size:30px;margin-left:auto}
 .spark{margin:16px 0;border:1px solid var(--line);border-radius:6px;background:var(--ink2);padding:14px}
-.legend{display:flex;gap:16px;font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:8px}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:8px}
 .legend i{display:inline-block;width:14px;height:2px;vertical-align:middle;margin-right:5px}
 .dgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}
 .dcell{background:var(--ink2);border:1px solid var(--line);border-radius:5px;padding:12px}
 .dcell .k{font-family:var(--mono);font-size:9px;letter-spacing:.12em;color:var(--faint);text-transform:uppercase}
 .dcell .v{font-family:var(--mono);font-size:16px;margin-top:6px}
-.stamp{border:1px solid var(--line);border-left:2px solid var(--amber);background:rgba(224,164,88,.06);
-  border-radius:4px;padding:12px 14px;font-size:12.5px;color:var(--dim);margin-top:8px}
+.stamp{border:1px solid var(--line);border-left:2px solid var(--amber);background:rgba(224,164,88,.06);border-radius:4px;padding:12px 14px;font-size:12.5px;color:var(--dim);margin-top:8px}
 .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:18px 0 14px}
-.tab{font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--faint);text-transform:uppercase;
-  padding:9px 12px;cursor:pointer;border-bottom:2px solid transparent}
+.tab{font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--faint);text-transform:uppercase;padding:9px 12px;cursor:pointer;border-bottom:2px solid transparent}
 .tab.on{color:var(--bone);border-bottom-color:var(--amber)}
 .stub{color:var(--faint);font-size:12.5px;padding:14px;border:1px dashed var(--line);border-radius:5px}
 .hidden{display:none}
-.disc{text-align:center;font-family:var(--mono);font-size:10px;color:var(--faint);
-  letter-spacing:.04em;margin-top:28px;padding-top:16px;border-top:1px solid var(--line)}
-/* ---- responsive (mobil tasma fix) ---- */
+.disc{text-align:center;font-family:var(--mono);font-size:10px;color:var(--faint);letter-spacing:.04em;margin-top:28px;padding-top:16px;border-top:1px solid var(--line)}
 @media (max-width:640px){
   .wrap{padding:0 12px 56px}
   .hero{grid-template-columns:1fr;gap:16px;padding:18px;text-align:center}
@@ -459,21 +468,21 @@ body{background:var(--ink);color:var(--bone);font-family:var(--body);line-height
 
 <div id="view-detail" class="hidden"></div>
 
-<div class="disc" id="disc">APEX v2.0 · yatirim tavsiyesi degildir · getiri tahmini ~ yazi-tura, kanitlanmis edge degil</div>
+<div class="disc" id="disc">APEX v2.6 · yatirim tavsiyesi degildir · getiri tahmini ~ yazi-tura, kanitlanmis edge degil</div>
 </div>
 
 <script>
 var APP = window.__APP_DATA__ || {};
 var SVGNS="http://www.w3.org/2000/svg";
-function el(t,a){var e=document.createElementNS?document.createElement(t):null;if(a)for(var k in a)e.setAttribute(k,a[k]);return e;}
 function svgEl(t,a){var e=document.createElementNS(SVGNS,t);if(a)for(var k in a)e.setAttribute(k,a[k]);return e;}
 function clr(n){return n>0.05?'up':(n<-0.05?'dn':'dim');}
 function sgn(n){return (n>0?'+':'')+n;}
+function num(x){return typeof x==='number'&&!isNaN(x);}
 
-/* ---- trust bearing gauge ---- */
 function drawGauge(score){
   var sv=document.getElementById('gsvg');sv.innerHTML='';
   var cx=92,cy=100,R=78,sw=13;
+  function pol(deg){var r=(180-deg)*Math.PI/180;return {x:cx+R*Math.cos(r),y:cy-R*Math.sin(r)};}
   function arc(a0,a1,col,op){
     var p0=pol(a0),p1=pol(a1);
     var large=(a1-a0)>180?1:0;
@@ -481,44 +490,100 @@ function drawGauge(score){
     var e=svgEl('path',{d:d,fill:'none',stroke:col,'stroke-width':sw,'stroke-linecap':'butt'});
     if(op)e.setAttribute('opacity',op);sv.appendChild(e);
   }
-  function pol(deg){var r=(180-deg)*Math.PI/180;return {x:cx+R*Math.cos(r),y:cy-R*Math.sin(r)};}
-  /* bands: 0-40 rust, 40-70 amber, 70-100 teal (mapped 0..180 deg) */
   arc(0,72,'#D2715A',.42); arc(72,126,'#E0A458',.55); arc(126,180,'#4FB8A4',.42);
-  /* needle */
   var ang=score/100*180, np=pol(ang);
   sv.appendChild(svgEl('line',{x1:cx,y1:cy,x2:np.x,y2:np.y,stroke:'#E0A458','stroke-width':2.4,'stroke-linecap':'round'}));
   sv.appendChild(svgEl('circle',{cx:cx,cy:cy,r:4,fill:'#E0A458'}));
-  /* end ticks */
   sv.appendChild(svgEl('circle',{cx:pol(0).x,cy:pol(0).y,r:1.6,fill:'#5E6B72'}));
   sv.appendChild(svgEl('circle',{cx:pol(180).x,cy:pol(180).y,r:1.6,fill:'#5E6B72'}));
   document.getElementById('g-num').textContent=score;
 }
 
-/* ---- sparkline (price + ma50 + ma200) ---- */
-function sparkSVG(hist,ma50,ma200,kesisim){
+/* ---- sparkline (price + ma50 + ma200 + projektor konisi) ---- */
+function sparkSVG(hist,ma50,ma200,kesisim,cone){
   var W=620,H=150,pad=8;
   if(!hist||hist.length<2)return '<div class="stub">Fiyat serisi yok — canli veriye baglaninca dolar.</div>';
-  var all=hist.concat(ma50||[],ma200||[]).filter(function(x){return typeof x==='number'});
+  var L=hist.length;
+  var fut=(cone&&cone.length)?cone.length:0;
+  var all=hist.concat(ma50||[],ma200||[]).filter(num);
+  if(fut){cone.forEach(function(c){if(num(c.ust))all.push(c.ust);if(num(c.alt))all.push(c.alt);});}
   var mn=Math.min.apply(null,all),mx=Math.max.apply(null,all);if(mx-mn<1e-6){mx+=1;mn-=1;}
-  function X(i,L){return pad+(W-2*pad)*(i/(L-1));}
+  var total=(L-1)+fut;
+  function X(i){return pad+(W-2*pad)*(i/total);}
   function Y(v){return pad+(H-2*pad)*(1-(v-mn)/(mx-mn));}
-  function path(arr,col,w,op){if(!arr||arr.length<2)return '';var d='';for(var i=0;i<arr.length;i++){d+=(i?'L':'M')+X(i,arr.length).toFixed(1)+' '+Y(arr[i]).toFixed(1)+' ';}
+  function path(arr,col,w,op){if(!arr||arr.length<2)return '';var d='';for(var i=0;i<arr.length;i++){d+=(i?'L':'M')+X(i).toFixed(1)+' '+Y(arr[i]).toFixed(1)+' ';}
     return '<path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="'+w+'"'+(op?' opacity="'+op+'"':'')+'/>';}
   var s='<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="150" preserveAspectRatio="none">';
+  if(fut){
+    var lx=L-1, ly=hist[L-1];
+    var poly='M '+X(lx).toFixed(1)+' '+Y(ly).toFixed(1)+' ';
+    for(var i=0;i<fut;i++){poly+='L '+X(lx+1+i).toFixed(1)+' '+Y(cone[i].ust).toFixed(1)+' ';}
+    for(var j=fut-1;j>=0;j--){poly+='L '+X(lx+1+j).toFixed(1)+' '+Y(cone[j].alt).toFixed(1)+' ';}
+    poly+='Z';
+    s+='<path d="'+poly+'" fill="#4FB8A4" opacity="0.13" stroke="none"/>';
+    s+='<line x1="'+X(lx).toFixed(1)+'" y1="'+Y(ly).toFixed(1)+'" x2="'+X(total).toFixed(1)+'" y2="'+Y(ly).toFixed(1)+'" stroke="#9AA4A0" stroke-width="1" stroke-dasharray="3 3"/>';
+    s+='<line x1="'+X(lx).toFixed(1)+'" y1="'+pad+'" x2="'+X(lx).toFixed(1)+'" y2="'+(H-pad)+'" stroke="#2A3742" stroke-width="1" stroke-dasharray="2 3"/>';
+  }
   s+=path(ma200,'#5E6B72',1.2);s+=path(ma50,'#4FB8A4',1.4,.8);s+=path(hist,'#E8E4D8',1.8);
   if(kesisim&&kesisim.markers){var ref=(ma50&&ma50.length)?ma50:hist;
-    kesisim.markers.forEach(function(m){var xi=pad+(W-2*pad)*m.frac;
+    kesisim.markers.forEach(function(m){var xi=X(m.frac*(L-1));
       var yi=Y(ref[Math.min(ref.length-1,Math.round(m.frac*(ref.length-1)))]);
       var col=m.tip==='altin'?'#E0A458':'#D2715A';
       s+='<circle cx="'+xi.toFixed(1)+'" cy="'+yi.toFixed(1)+'" r="4.5" fill="'+col+'" stroke="#0E1419" stroke-width="1.6"/>';});}
   s+='</svg>';
   s+='<div class="legend"><span><i style="background:#E8E4D8"></i>fiyat</span>'+
      '<span><i style="background:#4FB8A4"></i>MA50</span>'+
-     '<span><i style="background:#5E6B72"></i>MA200</span>'+'<span style="color:#E0A458">\u25CF altin</span><span style="color:#D2715A">\u25CF olum</span></div>';
+     '<span><i style="background:#5E6B72"></i>MA200</span>'+'<span style="color:#E0A458">\u25CF altin</span><span style="color:#D2715A">\u25CF olum</span>'+
+     (fut?'<span class="dim">\u25E2 projektor 5g</span>':'')+'</div>';
   return s;
 }
 
-/* ---- render dashboard ---- */
+function kesisimKutu(k){
+  if(!k) return '';
+  if(!k.yeterli) return '<div class="stub">MA50/MA200 kesisim analizi icin yeterli gecmis yok (>200 gun gerekir).</div>';
+  var tipTxt=k.son_tip==='altin'?'<b class="am">ALTIN kesisim</b>':(k.son_tip==='olum'?'<b class="dn">OLUM kesisim</b>':'kesisim yok');
+  var l1=k.son_tip?('Son kesisim: '+tipTxt+' \u00b7 <b>'+k.gun_once+' gun once</b>'):'Kayitli MA50/MA200 kesisimi yok';
+  var l2='MA50 su an MA200\'un <b>%'+Math.abs(k.gap_pct)+'</b> '+(k.gap_pct>=0?'<span class="am">ustunde</span>':'<span class="dn">altinda</span>')+' \u00b7 fark '+k.gap_yon;
+  var l3=k.proj?('<div class="dim" style="margin-top:6px">Mevcut hizla kabaca <b>~'+k.proj+' gun</b> sonra kesisim olabilir — <b>mekanik tahmin, kesinlik degil</b>.</div>'):'';
+  var l4=k.post?('<div class="dim" style="margin-top:6px">Bu hissede gecmis altin kesisimlerden '+k.post.k+' gun sonra medyan: <b>%'+(k.post.medyan>0?'+':'')+k.post.medyan+'</b> ('+k.post.n+' olay). <span class="faint">Gecmis = gelecek degildir; kanitlanmis edge degil.</span></div>'):'';
+  var bc=k.son_tip==='altin'?'var(--amber)':(k.son_tip==='olum'?'var(--rust)':'var(--line)');
+  return '<div class="stamp" style="border-left-color:'+bc+'">'+l1+'<br>'+l2+l3+l4+'</div>';
+}
+
+/* ---- DUSUS RISKI kutusu (tersinden) ---- */
+function riskKutu(rd){
+  if(!rd)return '';
+  var cmap={rust:'var(--rust)',amber:'var(--amber)',teal:'var(--teal)'};
+  var col=cmap[rd.renk]||'var(--line)';
+  var b='';(rd.bayrak||[]).forEach(function(x){b+='<div class="dim" style="font-size:11.5px;margin-top:4px">\u2022 <b>'+x[0]+':</b> '+x[1]+'</div>';});
+  return '<div class="stamp" style="border-left-color:'+col+'">'+
+    '<b style="color:'+col+'">\u26A0 DUSUS RISKI: '+rd.skor+'/100 \u2014 '+rd.karar+'</b>'+b+
+    '<div class="faint" style="font-size:11px;margin-top:7px">Bu skor \'kesin duser\' demez; buradan asagi hareketin ne kadar normal/beklenir oldugunu soyler. Yon tahmini DEGIL.</div></div>';
+}
+
+/* ---- GRAFIK OGRETMEN (her ogenin anlami + o anki durum) ---- */
+function ogretmenKutu(s){
+  var px=num(s.px)?s.px:null;
+  var m50=(s.ma50&&s.ma50.length)?s.ma50[s.ma50.length-1]:null;
+  var m200=(s.ma200&&s.ma200.length)?s.ma200[s.ma200.length-1]:null;
+  function rel(p,m){if(!num(p)||!num(m)||!m)return ['—','dim'];var d=(p/m-1)*100;return [(d>=0?'USTUNDE':'ALTINDA')+' (%'+(d>=0?'+':'')+d.toFixed(1)+')',d>=0?'up':'dn'];}
+  var a=rel(px,m50), b=rel(px,m200);
+  var kes='kesisim verisi yok';
+  if(s.kesisim&&s.kesisim.yeterli&&s.kesisim.son_tip){
+    kes=(s.kesisim.son_tip==='altin'?'son kesisim ALTIN':'son kesisim OLUM')+' \u00b7 '+s.kesisim.gun_once+' gun once';
+  }
+  return '<details class="stamp" style="border-left-color:#4FB8A4">'+
+    '<summary style="cursor:pointer;color:#4FB8A4;font-weight:600;font-size:12.5px">\uD83D\uDCD8 Bu grafikte ne goruyorum? (her ogenin anlami)</summary>'+
+    '<div style="margin-top:10px">'+
+    '<div style="margin-bottom:9px"><b style="color:#4FB8A4">MA50 (yesil cizgi)</b> \u2014 son 50 gunun ortalama fiyati; KISA vadeli yonu gosterir. '+
+      '<span class="'+a[1]+'">Fiyat su an MA50\'nin '+a[0]+'.</span></div>'+
+    '<div style="margin-bottom:9px"><b style="color:#9AA4A0">MA200 (gri cizgi)</b> \u2014 son 200 gunun ortalamasi; UZUN vadeli ana yon. Ustundeyse boga, altindaysa ayi tarafi. '+
+      '<span class="'+b[1]+'">Fiyat su an MA200\'un '+b[0]+'.</span></div>'+
+    '<div style="margin-bottom:9px"><b class="am">Altin kesisim</b> / <b class="dn">olum kesisim</b> \u2014 MA50, MA200\'u yukari keserse ALTIN (yukselis baslangici sayilir), asagi keserse OLUM (dusus baslangici). Grafikte yuvarlak nokta. <span class="dim">('+kes+')</span></div>'+
+    '<div><b style="color:#4FB8A4">Projektor (sagdaki huni)</b> \u2014 onumuzdeki 5 gunun OLASI fiyat araligi. Yon tahmin ETMEZ (ortasi duz gider); sadece nereye kadar oynayabilecegini gosterir. Huni genisse oynaklik yuksek.</div>'+
+    '</div></details>';
+}
+
 function renderDash(){
   var rej=APP.rejim||{};
   document.getElementById('r-rejim').textContent='rejim '+(rej.durus||'—')+' · reel %'+sgn(rej.reel);
@@ -557,27 +622,16 @@ function renderDash(){
   });
 }
 
-function kesisimKutu(k){
-  if(!k) return '';
-  if(!k.yeterli) return '<div class="stub">MA50/MA200 kesisim analizi icin yeterli gecmis yok (>200 gun gerekir).</div>';
-  var tipTxt=k.son_tip==='altin'?'<b class="am">ALTIN kesisim</b>':(k.son_tip==='olum'?'<b class="dn">OLUM kesisim</b>':'kesisim yok');
-  var l1=k.son_tip?('Son kesisim: '+tipTxt+' \u00b7 <b>'+k.gun_once+' gun once</b>'):'Kayitli MA50/MA200 kesisimi yok';
-  var l2='MA50 su an MA200\'un <b>%'+Math.abs(k.gap_pct)+'</b> '+(k.gap_pct>=0?'<span class="am">ustunde</span>':'<span class="dn">altinda</span>')+' \u00b7 fark '+k.gap_yon;
-  var l3=k.proj?('<div class="dim" style="margin-top:6px">Mevcut hizla kabaca <b>~'+k.proj+' gun</b> sonra kesisim olabilir — <b>mekanik tahmin, kesinlik degil</b>.</div>'):'';
-  var l4=k.post?('<div class="dim" style="margin-top:6px">Bu hissede gecmis altin kesisimlerden '+k.post.k+' gun sonra medyan: <b>%'+(k.post.medyan>0?'+':'')+k.post.medyan+'</b> ('+k.post.n+' olay). <span class="faint">Gecmis = gelecek degildir; kanitlanmis edge degil.</span></div>'):'';
-  var bc=k.son_tip==='altin'?'var(--amber)':(k.son_tip==='olum'?'var(--rust)':'var(--line)');
-  return '<div class="stamp" style="border-left-color:'+bc+'">'+l1+'<br>'+l2+l3+l4+'</div>';
-}
-
-/* ---- render detail ---- */
 var curTab='teknik';
 function renderDetail(i){
   var s=APP.stocks[i];if(!s)return;
   document.getElementById('view-dash').classList.add('hidden');
   var v=document.getElementById('view-detail');v.classList.remove('hidden');
   var ch=(typeof s.ch==='number')?s.ch:0;
-  var teknik='<div class="spark">'+sparkSVG(s.hist,s.ma50,s.ma200,s.kesisim)+'</div>'+
+  var teknik='<div class="spark">'+sparkSVG(s.hist,s.ma50,s.ma200,s.kesisim,s.cone)+'</div>'+
+    riskKutu(s.risk_dusus)+
     kesisimKutu(s.kesisim)+
+    ogretmenKutu(s)+
     '<div class="dgrid">'+
     cell('Yillik vol',s.vol==='-'?'—':'%'+s.vol)+cell('RSI(14)',s.rsi==='-'?'—':s.rsi)+
     cell('3-ay',s.ay3==='-'?'—':'%'+sgn(s.ay3))+cell('R/Odul',s.rr==='-'?'—':s.rr+'×')+
@@ -631,7 +685,7 @@ def write_html(out=OUT,veri=None):
 
 def rapor_md(data):
     d=data; il=d.get("ileri"); rej=d["rejim"]
-    L=["# APEX — Durum Raporu (v2.0)",""]
+    L=["# APEX — Durum Raporu ("+SURUM+")",""]
     L.append("- Tarih: {} · Surum: {}".format(d.get("uretildi",""), d.get("surum","")))
     L.append("- Veri: {} dk gecikmeli · YATIRIM TAVSIYESI DEGILDIR".format(d.get("delay_dk",15)))
     L.append("")
@@ -662,16 +716,14 @@ def run_streamlit():
     def _veri(_surum=SURUM):
         return fetch_bist()
     html,data=build_html(veri=_veri())
-    components.html(html,height=1180,scrolling=True)
+    components.html(html,height=1320,scrolling=True)
 
     with st.expander("\U0001F4CB Raporu gor"):
         _rap=rapor_md(data)
         st.markdown(_rap)
-        st.caption("Kaydetmek istersen asagidaki metni uzun bas \u2192 kopyala. (Dosya indirme iOS'ta "
-                   "tam ekran acip kapatma vermedigi icin kaldirildi.)")
+        st.caption("Kaydetmek istersen asagidaki metni uzun bas \u2192 kopyala.")
         st.code(_rap, language="markdown")
 
-    # ---- KARAR CERCEVESI (interaktif — native) ----
     st.markdown("---")
     st.subheader("\U0001F9ED Karar Cercevesi")
     st.caption("Sistem NE alacagini SOYLEMEZ (o sende: katalizor + kanaat). Bir hisseyi dusunuyorsan, "
