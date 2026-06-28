@@ -19,7 +19,7 @@ import numpy as np
 
 TEMPLATE = "apex_omurga_v1.html"
 OUT = "apex.html"
-SURUM = "v1.8"                 # <-- her deploy'da artir: v1.9, v2.0 ... (cache tazelenir)
+SURUM = "v1.9"                 # <-- her deploy'da artir: v1.9, v2.0 ... (cache tazelenir)
 TAHMIN_TAVAN = 40.0           # tahmin gosterim tavani (+-%)
 ATR_K_STOP = 2.0             # stop = fiyat - K * ATR
 ATR_K_HEDEF = 3.0            # kirilim varsa hedef = fiyat + K * ATR
@@ -300,6 +300,42 @@ def rapor_md(data):
     L.append("- Ileri-test sadece risk/rejim-durus disiplinini olcer; getiri tahminini OLCMEZ.")
     return "\n".join(L)
 
+def senaryo_cerceve(px, hedef, vol_pct, atr):
+    """KOSULLU SENARYO — analist hedefini bu hissenin KENDI oynakligina gore baglama oturtur.
+    TAHMIN/YON/AL-SAT URETMEZ. Yalnizca olcer: mesafe ne kadar, bu hissenin normal
+    salinimina gore buyuk mu kucuk mu, ve analist hedefinin guvenilirlik notu.
+    Felsefe: ayni %20'lik fark sakin hissede buyuk, oynak hissede kucuktur — sistem
+    bunu cerceveler, 'al' demez. Olcu ekseni = oynaklik (projenin dogrulanmis ekseni)."""
+    if not px or px <= 0:
+        return None
+    fark = (float(hedef) / float(px) - 1.0) * 100.0
+    sigma = max(float(vol_pct or 30.0), 1.0) / 100.0          # yillik oynaklik (oran)
+    yil_oran = abs(fark) / 100.0 / sigma                       # mesafe / 1 yillik sigma
+    gunluk_pct = (float(atr) / float(px) * 100.0) if (atr and px) else None
+    gun = (abs(fark) / gunluk_pct) if (gunluk_pct and gunluk_pct > 0) else None
+
+    if yil_oran < 0.5:
+        buyukluk = "KUCUK"
+        bnot = ("Bu hissenin kendi oynakligina gore kucuk bir mesafe — tipik bir yillik "
+                "salinim araliginin yarisindan az. Cok seyin yolunda gitmesine gerek yok; "
+                "ama bu, analist hedefinin fiyata zaten yakin oldugu anlamina da gelebilir.")
+    elif yil_oran < 1.5:
+        buyukluk = "ORTA"
+        bnot = ("Kabaca bu hissenin normal bir yillik salinimi kadar. Ulasilabilir gorunur "
+                "ama garanti degil — bu bir BUYUKLUK olcusu, yon tahmini DEGIL.")
+    else:
+        buyukluk = "BUYUK"
+        bnot = ("Bu hissenin tipik yillik salinim araliginin epey ustunde. Bu hedefe ulasmak "
+                "icin olagandisi bir katalizor gerekir. Analist hedefi ya cok iyimser ya cok "
+                "uzun vadeli — hangisi oldugunu kontrol et.")
+
+    yon = ("Analist hedefi mevcut fiyatin USTUNDE" if fark > 0.5
+           else ("Analist hedefi mevcut fiyatin ALTINDA" if fark < -0.5
+                 else "Analist hedefi mevcut fiyata ~esit"))
+    return {"fark": round(fark, 1), "yil_oran": round(yil_oran, 2),
+            "gun": (round(gun) if gun else None), "sigma_pct": round(sigma * 100),
+            "buyukluk": buyukluk, "bnot": bnot, "yon": yon}
+
 def run_streamlit():
     import streamlit as st, streamlit.components.v1 as components
     st.set_page_config(page_title="APEX",page_icon="\u26A1",layout="centered")
@@ -313,6 +349,41 @@ def run_streamlit():
     st.download_button("\U0001F4CB Raporu indir (.md)", data=rapor_md(data),
                        file_name="apex_rapor_{}.md".format(data.get("uretildi","")),
                        mime="text/markdown", use_container_width=True)
+
+    # --- KOSULLU SENARYO HARITASI ---
+    # Analist hedefini ForInvest'ten KENDIN gor, gir; sistem o rakami bu hissenin
+    # KENDI oynakligina gore baglama oturtur. Yon/al-sat SOYLEMEZ. Karar sende.
+    st.markdown("---")
+    st.subheader("\U0001F9ED Kosullu senaryo haritasi")
+    st.caption("Analist hedef fiyatini ForInvest'ten KENDIN gor, asagi gir. Sistem o rakami "
+               "bu hissenin KENDI oynakligina gore baglama oturtur — yon/al-sat SOYLEMEZ. Karar sende.")
+    secilebilir=[s for s in data["stocks"] if isinstance(s.get("px"),(int,float))]
+    if not secilebilir:
+        st.info("Canli fiyat yok — senaryo icin yfinance verisi gerekli.")
+    else:
+        etiketler=["{} — {}".format(s["tk"],s["nm"]) for s in secilebilir]
+        secim=st.selectbox("Hisse",etiketler,key="sen_kod")
+        sec=secilebilir[etiketler.index(secim)]
+        px=float(sec["px"])
+        c1,c2=st.columns(2)
+        c1.metric("Mevcut fiyat","\u20BA{}".format(px))
+        c2.metric("Yillik oynaklik","%{}".format(sec.get("vol","-")))
+        hedef=st.number_input("Analist hedef fiyati (ForInvest'te gordugun sayi, \u20BA)",
+                              min_value=0.0,value=float(px),step=0.01,key="sen_hedef")
+        if st.button("Cerceveyi goster",key="sen_btn",use_container_width=True):
+            c=senaryo_cerceve(px,float(hedef),sec.get("vol"),sec.get("atr"))
+            if not c:
+                st.warning("Hesaplanamadi — fiyat/oynaklik verisi eksik.")
+            else:
+                st.markdown("#### {} mesafe".format(c["buyukluk"]))
+                st.write("{}: **%{:+}**".format(c["yon"],c["fark"]))
+                st.write("Bu mesafe, hissenin ~1 yillik oynakliginin (%{}) **{}×**'i kadar."
+                         .format(c["sigma_pct"],c["yil_oran"]))
+                if c["gun"]:
+                    st.write("Tipik gunluk salinima gore kabaca **{} islem gunu**luk mesafe.".format(c["gun"]))
+                st.info(c["bnot"])
+                st.caption("Analist hedefleri sistematik olarak IYIMSER saplidir ve KANITLANMIS bir "
+                           "edge DEGILDIR. Bu bir cerceve, tahmin degil — karar sende.")
 
     n=len([s for s in data["stocks"] if isinstance(s["px"],(int,float))])
     if not data["canli"]:
