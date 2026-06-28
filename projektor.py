@@ -110,23 +110,32 @@ def gonder_telegram(metin) -> bool:
 
 
 def main(send=False):
-    """Baglamı toplar, hikayeler, mesaj kurar; send=True ise Telegram'a yollar."""
-    _log.info("baglam_motor.topla() calistiriliyor...")
-    from baglam_motor import topla
+    """Baglamı toplar, hikayeler, mesaj kurar; send=True ise Telegram'a yollar.
 
-    sonuc = topla()
+    KORUMA KABUGU: ana akistaki herhangi bir adim patlarsa (baglam_motor /
+    hikaye_motor / app importu, veri cekimi, KAP erisimi vb.) cron COKMEZ;
+    hata loglanir ve None doner. Boylece GitHub Actions her gun kirmizi vermez.
+    """
+    try:
+        _log.info("baglam_motor.topla() calistiriliyor...")
+        from baglam_motor import topla
 
-    _log.info("hikaye_motor.hikayele() calistiriliyor...")
-    from hikaye_motor import hikayele
+        sonuc = topla()
 
-    hikaye = hikayele(sonuc=sonuc)
+        _log.info("hikaye_motor.hikayele() calistiriliyor...")
+        from hikaye_motor import hikayele
 
-    _log.info("app.rejim_hesapla() calistiriliyor...")
-    from app import rejim_hesapla
+        hikaye = hikayele(sonuc=sonuc)
 
-    rejim = rejim_hesapla(date.today())
+        _log.info("app.rejim_hesapla() calistiriliyor...")
+        from app import rejim_hesapla
 
-    metin = mesaj_kur(sonuc, hikaye, rejim)
+        rejim = rejim_hesapla(date.today())
+
+        metin = mesaj_kur(sonuc, hikaye, rejim)
+    except Exception as e:
+        _log.error(f"Projektor ana akis basarisiz, bugun atlandi: {e}")
+        return None
 
     if send:
         _log.info("--send modu: Telegram'a gonderiliyor...")
@@ -141,4 +150,9 @@ def main(send=False):
 
 if __name__ == "__main__":
     send = "--send" in sys.argv or os.environ.get("PROJEKTOR_SEND", "") == "1"
-    main(send=send)
+    try:
+        main(send=send)
+    except Exception as e:
+        # Son kalkan: beklenmeyen her sey burada yutulur; cron temiz (exit 0) cikar.
+        _log.error(f"Beklenmeyen hata; cron yine de temiz cikiyor: {e}")
+        sys.exit(0)
