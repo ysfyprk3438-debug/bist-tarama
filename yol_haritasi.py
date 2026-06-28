@@ -1,135 +1,123 @@
-# -*- coding: utf-8 -*-
 """
 ═══════════════════════════════════════════════════════════════
-YOL HARİTASI — APEX (BİST)
+YOL HARİTASI — APEX
 ═══════════════════════════════════════════════════════════════
-Bu dosya projenin VİZYON HAFIZASIDIR. durum.py "neredeyiz"i, bu dosya
-"nereye ve neden"i tutar.
+Bu dosya projenin HAFIZASIDIR. Vizyon ve "sonra" denenler burada yaşar.
+Yeni oturumda nereye gittiğimizi unutursak buraya bakarız. (Önce durum.py.)
 
-Felsefe:
-  Piyasa uyarlanır bir sistemdir. Bir kenar (edge) bulunup kullanıldıkça
-  aşınır. "Kalıcı zirve" yoktur. Asıl kazanan zirveyi bulan değil, zirve
-  kayınca en hızlı yeniden konumlanandır. Hedef bitmiş mükemmel program
-  değil, kendini sürekli yeniden icat eden bir organizmadır.
+⚠️ ESKİ FELSEFE GÖMÜLDÜ (28 Haz 2026):
+  Eski yol haritası "piyasa uyarlanır, bir edge bul ve kayan zirveyi kovala,
+  kendini yeniden icat eden bir getiri-organizması kur" diyordu. Bu anlatı
+  baştan çıkarıcıdır ve bizi tam da overfitting'e çeker. RİGORLU TEST ETTİK:
+  15dk gecikmeli perakende BIST verisiyle kovalanacak bir getiri-zirvesi YOK.
+  6 strateji ailesi + plasebo testi bunu kapattı (bkz. durum.py TEMEL_BULGU).
 
-  EK İLKE (27 Haz 2026 bakımından): Karmaşıklık ≠ edge. Katman eklemek
-  doğrulanmamış bir stratejiye kenar KAZANDIRMAZ; sadece overfit yüzeyini
-  büyütür. Önce DÜRÜST ÖLÇÜM, sonra strateji. Dürüstlük lükse değil temel.
+DÜRÜST FELSEFE (yenisi):
+  Getiri kehaneti ulaşılamaz; RİSK YÖNETİMİ ulaşılabilir. Perakendenin asıl
+  para kaybettiği yer kötü risk/pozisyon kararlarıdır — çözülebilir, dürüst
+  problem. APEX bir getiri-oracle'ı değil, REJİM-FARKINDA RİSK PUSULASI'dır.
+  Uzun vadeli hedef (regüle fon) hâlâ geçerli — ama temeli risk disiplini ve
+  mevduatı RİSK-AYARLI mütevazı geçmek, bir kâhin değil.
 
-Durum kodları: ✅ yapıldı · 🔨 yapılıyor · 🎯 sıradaki · 🔭 ufuk · 🔒 veri/altyapı bekliyor
+Durum kodları: ✅ yapıldı · 🎯 sıradaki · 🔭 ufuk (şartlı) · ⚰️ gömüldü (test edip elendi)
 """
 
 # ══════════════════════════════════════════════════════════════
-# TAMAMLANANLAR
+# TAMAMLANAN — CANLI DÜRÜST ÇEKİRDEK (v5.0, 28 Haz 2026)
 # ══════════════════════════════════════════════════════════════
 TAMAMLANAN = [
-    ("Çift kaynaklı veri (Yahoo + İş Yatırım, hata görünür)", "✅"),
-    ("Analiz motoru (kendi göstergeleri, ta'ya bağımsız)", "✅"),
-    ("Akıllı para skoru (OBV, CMF, büyük oyuncu)", "✅"),
-    ("Sanal cüzdan — komisyonlu paper trading", "✅"),
-    ("Niyet Okuyucu + Güven Motoru", "✅"),
-    ("Karar Sentezleyici (av skoru → tek karar)", "✅"),
-    ("Volatilite rejimi / Karakter (Hurst) / Hacim profili / Zaman dilimi onayı", "✅"),
-    ("AI/ML katmanı (walk-forward + kalibrasyon, F1 ile sahte-sıfır bug giderildi)", "✅"),
-    ("NOVA otomatik robot motoru — cron'da canlı, sanal, komisyonlu (robot_durum.json)", "✅"),
-    ("Mobil native UI (APEX/Pro/Trade) + Streamlit gömme", "✅"),
-    ("Telegram bildirim + GitHub Actions zamanlanmış görevler", "✅"),
-    ("UI dürüstlük Pas-1: winRate→kalibre olasılık, sahte emir defteri→dürüst not (CANLI)", "✅"),
-    ("UI dürüstlük Pas-2: demo bakiye/pozisyon → gerçek APP.robot verisi (HAZIR, deploy bekliyor)", "🔨"),
-    ("Komple kod bakımı + dürüst teşhis (27 Haz 2026)", "✅"),
+    ("İleri kağıt-test günlüğü — her iş günü otonom (cron), gerçek OOS biriktirir", "✅"),
+    ("Reel-faiz rejim pusulası — politika−enflasyon, duruş (mevduat/hisse lehine)", "✅"),
+    ("Vol-hedefli risk-ölçekleme — DD bütçesi→hisse ağırlığı; gerçek BIST'te DOĞRULANDI", "✅"),
+    ("Makro oto-besleme — OECD enflasyon+faiz, statiğe fallback, statik öncelikli", "✅"),
+    ("4-çizgi karne — risk-ölçekli/duruş/endeks/mevduat, sadece kayıtlı kararlardan", "✅"),
+    ("Telegram bildirimi — günlük duruş+pozisyon telefona (yeni kayıtta)", "✅"),
+    ("Dürüstlük katmanı — her ekran kendi sınırını söyler ('kâhin değil')", "✅"),
+    ("Dayanıklılık — veri tarihi geri gitse/mükerrer gelse dedupe+sıralama düzeltir", "✅"),
 ]
 
 # ══════════════════════════════════════════════════════════════
-# KATMAN 0 — DÜRÜSTLÜK & ÖLÇÜM HATTI  (YENİ EN ÖNCELİK)
-# Teşhis: dürüst bileşenler kodda VAR ama canlı yola zayıf olan bağlı;
-# ve edge'i ölçecek backtest kırık. Strateji tartışmasından ÖNCE bu gelir.
+# TEST EDİLİP ELENEN (bir daha açma — kanıt burada)
 # ══════════════════════════════════════════════════════════════
-KATMAN_0_DURUSTLUK = {
-    "no": 0,
-    "ad": "Dürüstlük & Ölçüm Hattı",
-    "durum": "🎯",
-    "ozet": "Sistemi 'dürüstçe ölçülebilir' yap. Önce hangi sinyalin gerçek olduğunu "
-            "bilmeden strateji tartışmak anlamsız.",
-    "isler": [
-        "BASELINE: konsolide hatasız v1.0 temel → GitHub (her şeyin üstüne bineceği zemin).",
-        "Pas-2 cüzdanı canlıya al (gerçek portföy + 8 pozisyon).",
-        "Göstergeyi/av_skoru'nu ML ile barıştır (kural-skoru ile kalibre olasılık çelişmesin).",
-        "UI risk metriğini doğru motora bağla (performans.risk_metrikleri; günlüğe resample, mevduat %45 kıyas).",
-        "UI öz-puanı oz_puanlama'ya bağla (endeksi yenmeyi ölçen sürüm).",
-        "backtest.py onar: tazelik bypass + komisyon + mevduat eşiği → edge DÜRÜSTÇE ölçülsün.",
-        "Sessiz bozulmayı görünür yap: veri-kalite etiketi + katman çökme logu.",
-    ],
-    "onkosul": "Yok — hemen yapılabilir. Hepsi mevcut kodun düzeltilmesi/bağlanması.",
-}
+ELENEN = [
+    "Çok-vade teknik sinyal — gün içi/günlük/haftalık; mevduatı+endeksi geçemedi",
+    "Kesitsel seçim (hibrit skor) — full-cycle kazanır ama OOS yüksek-faiz yarısında kaybetti",
+    "Momentum seçimi — parametre-sağlam AMA OOS-kırılgan, boom-bağımlı, MaxDD -%50",
+    "MA200 rejim zamanlaması — 59 whipsaw, en kötüsü; zamanlama kaybettirir",
+    "Temel-analiz seçimi (ROE+büyüme, point-in-time) — OOS en kötü, rejim-bağımlı",
+    "Makro reel-faiz zamanlaması — eşik+gecikmeye dayandı AMA plasebo B'de çöktü "
+    "(%55.7=medyan); mevduatı geçen şey beta, alfa değil",
+]
 
 # ══════════════════════════════════════════════════════════════
-# ÜST KATMANLAR — ZİRVE KAYDIKÇA KOVALAMAK İÇİN
+# GERÇEKÇİ YOL — buradan sonrası (hepsi dürüst kalmak şartıyla)
 # ══════════════════════════════════════════════════════════════
-KATMANLAR = [
+GERCEKCI_YOL = [
     {
-        "no": 1,
-        "ad": "Kendini Yeniden Kalibre Eden Sistem",
-        "durum": "🔒",
-        "ozet": "Sistem hangi sinyal tipinin çürüdüğünü öz-ölçümden görüp KENDİ ağırlıklarını "
-                "ayarlar. Statik kurallı bottan, rejimi kuraldan öğrenen sisteme geçiş.",
-        "nasil": "Öz-ölçüm + Supabase sicili eşiğe ulaşınca son N günün başarı oranına göre "
-                 "sinyal ağırlıkları dinamik güncellensin. (kalibrasyon.py zemini hazır.)",
-        "onkosul": "🔒 Katman 0 + Supabase'e birkaç hafta GERÇEK sinyal/işlem sicili.",
+        "no": 0, "ad": "İleri Test Birikimi", "durum": "🎯",
+        "ozet": "Sistem canlı, her iş günü gerçek karar kaydediyor. Tek gerçek "
+                "doğrulama bu — geçmişe uydurulamaz. Asıl iş kod değil, SABIR.",
+        "nasil": "Haftalarca/aylarca biriksin. 4-çizgi karnenin ayrışmasını izle. "
+                 "Beklenti: pozitif reel-faiz rejiminde risk-ölçekli≈mevduat, düşük DD.",
+        "onkosul": "Yok — çalışıyor. Sadece zaman.",
     },
     {
-        "no": 2,
-        "ad": "Strateji Sorgusu — Edge Gerçekten Var mı?",
-        "durum": "🔭",
-        "ozet": "Katman 0 dürüst backtest verince asıl soru: mevcut teknik strateji ailesinin "
-                "mevduata karşı kenarı VAR MI? Yoksa kabul et ve değiştir.",
-        "nasil": "Dürüst backtest + gerçek sicil negatifse: (a) kanıtlanmış Türk fon yöneticisi "
-                 "giriş/çıkış şablonunu reverse-engineer et, ya da (b) temel/makro özellik katmanı "
-                 "ekle (sistem şu an %100 teknik/fiyat-türevli = en kalabalık alan).",
-        "onkosul": "Katman 0'ın dürüst ölçümü.",
+        "no": 1, "ad": "Risk Aracını Olgunlaştır", "durum": "🔭",
+        "ozet": "Doğrulanmış tek değer ekseni risk kontrolü. Onu keskinleştir.",
+        "nasil": "DD bütçesini ayarlanabilir yap; k=2.5'i ileri-veriyle kalibre et; "
+                 "makro_oto faiz vekilini (IR3TIB) politika faizine yaklaştır.",
+        "onkosul": "Biraz ileri-veri.",
     },
     {
-        "no": 3,
-        "ad": "Gerçek Mikroyapı — Niyetin İzi",
-        "durum": "🔒",
-        "ozet": "Niyet Okuyucu'nun fiyat-gölgesinden gerçek emir defteri + AKD (aracı kurum "
-                "dağılımı) + takas verisine olgunlaşması.",
-        "nasil": "niyet.py akd_verisi parametresini kabul edecek şekilde tasarlandı; veri bağlanınca "
-                 "gölge → gerçeğe döner. UI'de bu katman zaten 'kilitli, sahte göstermiyoruz' diyor.",
-        "onkosul": "🔒 AKD/derinlik verisi (ForInvest lisansı / broker API).",
+        "no": 2, "ad": "Rejim Pusulasının Değerini ÖLÇ", "durum": "🔭",
+        "ozet": "Rejim duruşu ileri-testte risk-ayarlı fayda katıyor mu? Karne yeterince "
+                "dolunca DÜRÜSTÇE ölç — katmıyorsa pusulayı sade tut, zorlama.",
+        "nasil": "Risk-ölçekli stratejinin gerçek ileri-Sharpe'ını mevduata karşı ölç. "
+                 "Plasebo dersini unutma: beta'yı alfa sanma.",
+        "onkosul": "Aylarca ileri-veri.",
     },
     {
-        "no": 4,
-        "ad": "Strateji Ekosistemi & Kalabalık Psikolojisi",
-        "durum": "🔨",
-        "ozet": "Tek model yerine rejime göre yarışan stratejiler (momentum/dip/kırılım/defansif) + "
-                "kalabalığın tahmin edilebilir irrasyonelliği. Zemin (strateji.py, psikoloji.py) yazılı.",
-        "nasil": "Meta-katman rejime göre strateji ağırlığı dağıtır; gerçek sicille olgunlaşır.",
-        "onkosul": "Katman 1 (öz-kalibrasyon) + gerçek sicil.",
+        "no": 3, "ad": "Regüle Fon (uzun vade)", "durum": "🔭",
+        "ozet": "Asıl hedef duruyor. Ama temeli RİSK DİSİPLİNİ + mevduatı risk-ayarlı "
+                "mütevazı geçmek — bir getiri-oracle değil. Kanıt = uzun ileri-test günlüğü.",
+        "nasil": "Yıllara yayılan dürüst karne + tutarlı risk kontrolü = anlatılabilir "
+                 "track record. Önce o, sonra yapısal adımlar.",
+        "onkosul": "Uzun, kesintisiz ileri-test geçmişi.",
     },
 ]
 
 # ══════════════════════════════════════════════════════════════
-# AKLA GELEN EK FİKİRLER (kaybolmasın)
+# GÖMÜLEN KATMANLAR (eski vizyon — neden öldüğü açık olsun)
 # ══════════════════════════════════════════════════════════════
-EK_FIKIRLER = [
-    "Robot equity eğrisini günlüğe resample edip tek tutarlı risk motoru kullan (iki motoru birleştir).",
-    "Telegram otomatik alarm (uygulama kapalıyken bildirim) — zaten cron'da, izle.",
-    "Korelasyon/yığılma uyarısı gerçek veriyle olgunlaştır.",
-    "Sat-geri al cooldown'unu rejime göre dinamikleştir.",
+GOMULEN = [
+    ("K1 Kendini kalibre eden getiri-sistemi", "⚰️",
+     "Önkoşulu 'çürüyen edge'i tespit edip ağırlık ayarla' idi. Ama ortada kalibre "
+     "edilecek bir edge yok (TEMEL_BULGU). Kalibrasyon overfitting'i hızlandırır."),
+    ("K4 Strateji ekosistemi (rakip beyinler)", "⚰️",
+     "Birden çok getiri-stratejisini yarıştırmak — her biri tek tek elendi. "
+     "Eleneni çoğaltmak edge yaratmaz, sadece overfitting yüzeyini büyütür."),
+    ("K3/K5 Mikroyapı + kalabalık psikolojisi", "⚰️",
+     "AKD/emir-defteri verisi + davranış modelleme. 15dk gecikmeli perakende "
+     "erişimle yapısal olarak ulaşılamaz; pro araçları gerektirir (Tera örneği)."),
+    ("Av skoru / robot / niyet okuyucu", "⚰️",
+     "Eski karar.py av_skoru ve teknik sinyal yığını — rigorlu testte mevduata yenildi."),
 ]
 
 
 def yol_haritasi_metni():
-    s = ["APEX — YOL HARİTASI\n" + "=" * 50]
-    s.append(f"\nTAMAMLANAN ({len(TAMAMLANAN)}):")
-    for ad, durum in TAMAMLANAN:
-        s.append(f"  {durum} {ad}")
-    s.append(f"\n  {KATMAN_0_DURUSTLUK['durum']} KATMAN 0: {KATMAN_0_DURUSTLUK['ad']} (EN ÖNCELİK)")
-    for i in KATMAN_0_DURUSTLUK["isler"]:
-        s.append(f"      • {i}")
-    s.append("\nÜST KATMANLAR:")
-    for k in KATMANLAR:
-        s.append(f"  {k['durum']} K{k['no']}: {k['ad']}")
+    s = ["APEX — YOL HARİTASI (dürüst sürüm)\n" + "=" * 50]
+    s.append(f"\nCANLI ÇEKİRDEK ({len(TAMAMLANAN)}):")
+    for ad, d in TAMAMLANAN:
+        s.append(f"  {d} {ad}")
+    s.append(f"\nTEST EDİLİP ELENEN ({len(ELENEN)}) — bir daha açma:")
+    for e in ELENEN:
+        s.append(f"  ⚰️ {e}")
+    s.append("\nGERÇEKÇİ YOL:")
+    for k in GERCEKCI_YOL:
+        s.append(f"  {k['durum']} {k['no']}: {k['ad']} — {k['ozet']}")
+    s.append("\nGÖMÜLEN ESKİ KATMANLAR:")
+    for ad, d, neden in GOMULEN:
+        s.append(f"  {d} {ad}")
     return "\n".join(s)
 
 
