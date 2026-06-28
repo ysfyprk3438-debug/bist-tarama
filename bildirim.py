@@ -7,7 +7,7 @@ import os, json, urllib.request
 
 
 def gonder(metin):
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    token = os.environ.get("TELEGRAM_TOKEN") or os.environ.get("TELEGRAM_BOT_TOKEN")
     chat = os.environ.get("TELEGRAM_CHAT_ID")
     if not token or not chat:
         return False  # kurulmamış → sessiz no-op
