@@ -1,0 +1,31 @@
+name: projektor gunluk baglam
+
+on:
+  schedule:
+    - cron: "35 15 * * 1-5"   # 15:35 UTC = 18:35 TR (Pzt-Cum). gunluk.yml'den 5dk sonra.
+  workflow_dispatch: {}         # Actions sekmesinden elle "Run workflow"
+
+permissions:
+  contents: read
+
+jobs:
+  projektor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: repoyu al
+        uses: actions/checkout@v4
+
+      - name: python kur
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: bagimliliklar
+        run: pip install --quiet numpy yfinance anthropic
+
+      - name: baglam ozetini gonder
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python projektor.py --send
