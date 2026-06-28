@@ -1,131 +1,112 @@
-# -*- coding: utf-8 -*-
 """
 ═══════════════════════════════════════════════════════════════
 ║                                                               ║
-║   📍 APEX (BİST) — DURUM PANOSU / KONTROL NOKTASI            ║
-║   YENİ OTURUMDA ÖNCE BUNU OKU. Tüm bağlam burada.            ║
+║   📍 APEX — DURUM PANOSU                                       ║
+║   BURADAYIZ. Yeni oturumda ÖNCE BUNU OKU.                     ║
 ║                                                               ║
 ═══════════════════════════════════════════════════════════════
 
-Bu dosya projenin HAFIZASIDIR. Her oturumun sonunda güncellenir.
-Yeni bir sohbet açıldığında Claude önce bunu + yol_haritasi.py'yi okur,
-böylece geçmiş bağlamı sıfırdan kurmadan kaldığı yerden devam eder.
+Bu dosya projenin KONTROL NOKTASIDIR.
+Yeni bir sohbete başlarken önce bunu oku → tüm bağlamı al.
+
+⚠️ GELECEK OTURUM İÇİN EN ÖNEMLİ UYARI:
+Bu projede getiri-tahmin edge'i AVI RİGORLU OLARAK YAPILDI VE KAPANDI.
+"Hadi bir strateji daha deneyelim" tuzağına DÜŞME. Aşağıdaki TEMEL_BULGU'ya bak.
+Yeni backtest = daha fazla overfitting. Asıl iş artık kod değil, SABIR (ileri test).
 """
 
-SURUM = "v5.0 — APEX (komple bakım + dürüstlük hattı)"
-SON_GUNCELLEME = "27 Haziran 2026 — komple kod bakımı yapıldı, teşhis çıkarıldı, baseline'a geçiliyor"
+SURUM = "v5.0 — APEX Dürüst Çekirdek"
+SON_GUNCELLEME = "28 Haz 2026: edge avı dürüstçe kapandı; risk + ileri-test ürünü canlıya alındı"
 
 # ══════════════════════════════════════════════════════════════
-# PROJE KİMLİĞİ (değişmez çerçeve)
+# TEMEL BULGU (bu gecenin özü — her şeyin dayandığı gerçek)
 # ══════════════════════════════════════════════════════════════
-KIMLIK = {
-    "ad": "APEX — BIST-100 AI tarama + sanal (paper) ticaret terminali",
-    "veri": "15 dk gecikmeli günlük OHLCV (Yahoo birincil + İş Yatırım yedek)",
-    "basari_kriteri": "Risk-düzeltilmiş bazda Türk mevduat faizini (~%45 yıllık) yenmek. "
-                      "Citadel/Renaissance KIYASI DEĞİL — 15dk gecikme hız-bağımlı stratejileri yapısal olarak dışlar.",
-    "max_dd_hedef": "~%1.5 (uzun vade modu)",
-    "repo": "github.com/ysfyprk3438-debug/bist-tarama (branch: main)",
-    "deploy": "Streamlit Community Cloud (app: arayuz.py mobil native UI) + GitHub Actions cron (NOVA robot + Telegram)",
-    "calisma_modu": "Claude proje lideri gibi davranır: 'şu mu bu mu' diye sormaz, "
-                    "ne yapılacağını söyler ve ekranda adım adım yönlendirir. Türkçe çalışılır. "
-                    "Dürüst, süssüz değerlendirme tercih edilir.",
+TEMEL_BULGU = {
+    "soru": "15dk gecikmeli perakende BIST verisiyle mevduatı yenecek kanıtlanmış getiri-edge'i var mı?",
+    "cevap": "HAYIR. 6 strateji ailesi (çok-vade, kesitsel seçim, momentum, MA200 rejim, "
+             "temel-analiz, makro reel-faiz zamanlaması) sert testlerden geçirildi; hepsi düştü.",
+    "en_sert_test": "Makro reel-faiz rejimi eşik+gecikme testlerine dayandı AMA plasebo B'de çöktü "
+                    "(gerçek %55.7 yüzdelik = medyan). Mevduatı geçen şey zamanlama becerisi değil, "
+                    "yükselen 8 yılda uzun hisse maruziyeti (beta, alfa kılığında).",
+    "ayakta_kalan": "RİSK KONTROLÜ. Vol-hedefleme gerçek BIST'te doğrulandı: gerçekleşen MaxDD her "
+                    "bütçenin altında (1.5→0.3, 5→2.1, 10→5.1, 20→11.4), all-in'in -%31.8'ini tek haneye kırptı.",
+    "ders": "Getiri kehaneti ulaşılamaz; risk yönetimi ulaşılabilir. APEX'in değer ekseni budur.",
 }
 
 # ══════════════════════════════════════════════════════════════
 # ŞU AN NEREDEYİZ
 # ══════════════════════════════════════════════════════════════
 SU_AN = {
-    "asama": "Komple bakım TAMAM → teşhis TAMAM → yeni yol haritası + hafıza yazıldı → "
-             "sıradaki: konsolide v1.0 BASELINE'ı kur ve GitHub'a yükle (temel sürüm).",
-    "robot": "NOVA cron'da canlı çalışıyor (robot_durum.json). 8 açık pozisyon "
-             "(TCELL, TAVHL, KLNMA, DEVA, AKBNK, YKBNK, TRGYO, EKGYO), başlangıç 100.000₺, "
-             "portföy ~başabaşa yakın (~99.9k). Komisyon modellenmiş (%0.2).",
-    "ui_durustluk": "Mobil şablonda uydurma yeşil sayılar temizleniyor. "
-                    "Pas-1 (canlı): winRate→kalibre model olasılığı, sahte emir defteri→dürüst not. "
-                    "Pas-2 (HAZIR, deploy bekliyor): 124.500₺ demo bakiye + sahte pozisyonlar → "
-                    "gerçek APP.robot verisine bağlandı (renderBalance + renderCuzdan gerçek pozisyonlar).",
-    "bekleyen_karar": "Yok — baseline'ı kur.",
+    "asama": "CANLI — sistem her iş günü kendi kendine çalışıyor, gerçek ileri-test biriktiriyor",
+    "siradaki_adim": "KOD DEĞİL, SABIR. Karne haftalarca dolsun. Tek gerçek doğrulama ileri test.",
+    "bekleyen_karar": "Yok. Sistem tam ve çalışıyor.",
+    "onemli_not": "Bu çekirdek dürüsttür — her ekranda kendi sınırını söyler ('kâhin değil, risk-farkında temkin').",
 }
 
 # ══════════════════════════════════════════════════════════════
-# KOMPLE BAKIM TEŞHİSİ (27 Haz 2026) — DÜRÜST
+# CANLI ÇEKİRDEK (şu an çalışan sistem — bunlara dokunurken dikkat)
 # ══════════════════════════════════════════════════════════════
-# Kısa hüküm: Sistem mühendislik olarak olgun ama KANITLANMIŞ EDGE YOK.
-# Daha derin kalıp: en dürüst bileşenler canlı karar yolundan DIŞLANMIŞ.
-TESHIS = {
-    "1_tutarlilik_defekti": (
-        "Dürüst motorlar canlı yola bağlı değil. (a) karar.py av_skoru kalibre ML'i "
-        "(ai_model) HİÇ kullanmıyor; skor = kural-bazlı güven → gösterge 'AV 91/KESİN AL' "
-        "derken ML 'NÖTR %50' diyebiliyor; robot da av'a göre alıyor, yani dürüst ML'i değil "
-        "şişmiş kural-skorunu trade ediyor. (b) İki risk motoru: performans.risk_metrikleri "
-        "DOĞRU (günlüğe resample + mevduat %45 kıyas) ama UI'yi besleyen robot_motor._risk "
-        "YANLIŞ zaman tabanı (günde ~5 örneği günlük sayıp √252) → gösterilen Sortino güvenilmez. "
-        "(c) İki öz-puan: oz_puanlama (endeksi yenmeyi ölçer, sağlam) ama UI karne.skor'u "
-        "(taban+2 vanity metrik) gösteriyor."
-    ),
-    "2_yapisal_edge": (
-        "EN KRİTİK. Robot, backtest'te negatif Sharpe veren strateji ailesini sadakatle "
-        "uyguluyor. Robot temiz uygulayıcı — sorun ona NE trade ettirdiğimiz. Katman eklemek çözmez."
-    ),
-    "3_backtest_kirik": (
-        "backtest.py edge ölçemiyor: analiz_et'teki tazelik filtresi (bugün-son_tarih>10→None) "
-        "dilimlenmiş geçmişi öldürüyor + komisyon yok + mevduat eşiği yok. backtest_v2.py var ama "
-        "ana backtest.py kırık."
-    ),
-    "4_sessiz_bozulma": (
-        "İş Yatırım fallback'te O=H=L=Close → ATR/destek/direnç/Bollinger çöküyor, uyarı yok. "
-        "tarama_core'daki 'except: pass' katman çökmelerini yutuyor → sistem zannettiğinden zayıf "
-        "çalışıyor olabilir."
-    ),
-    "saglam_olan": (
-        "ai_model (F1 ile temiz, walk-forward + kalibrasyon, bilmediğinde NÖTR der), seffaflik.py "
-        "(aleyhte/belirsiz saklamaz), performans.risk_metrikleri (doğru), cuzdan.py + robot_motor "
-        "gerçekçi komisyon, güvenli yukle/kaydet, temiz modüler ayrım. İskelet iyi."
-    ),
-    "tek_cumle": (
-        "Darboğaz kod kalitesi değil: (a) stratejinin kanıtlanmış kenarı yok, (b) olan dürüst "
-        "sinyaller (ML, doğru risk metriği, oz_puanlama) karara bağlı değil."
-    ),
-}
-
-# ══════════════════════════════════════════════════════════════
-# SÜRÜM MUTABAKATI (baseline kurarken DİKKAT)
-# ══════════════════════════════════════════════════════════════
-# Elimizdeki repo ZIP'i birkaç dosyada eski. Baseline = repo ZIP + şu güncellemeler:
-SURUM_MUTABAKAT = [
-    "ui_app_template.html → 573 satırlık Pas-1+Pas-2 sürümü kullan (repo 572, eski).",
-    "ai_model.py → F1 düzeltmeli sürümü kullan (walk-forward sahte sıfır giderildi; repo eski).",
-    "ÇÖP TEMİZLE: boşluklu 'ai model.py', 'arayuz kartlar.py', 'bist kartlar.py' workflow/eski kart kalıntısı.",
-    "UYARI: Tek tek 'loose' dosya yüklemeleri isim-içerik karışık geliyor — TEK doğru kaynak repo ZIP'i.",
+CANLI_DOSYALAR = [
+    "backtest_runner.py — CANLI LOGGER (ileri_gunluk.py içeriği). Workflow bunu çalıştırır.",
+    "ileri_gunluk.py    — logger kaynağı: rejim+pozisyon hesaplar, karne kurar, Telegram atar",
+    "makro_veri.py      — statik çeyreklik faiz+enflasyon tablosu (TEMEL, elle güncellenir)",
+    "makro_oto.py       — OECD'den enflasyon+faiz oto-besleme; statiğe fallback; statik öncelikli",
+    "pozisyon.py        — vol-hedefli risk-ölçekleme (DD bütçesi→hisse ağırlığı, k=2.5)",
+    "bildirim.py        — Telegram göndericisi (secrets: TELEGRAM_TOKEN + TELEGRAM_CHAT_ID)",
+    "veri.py            — XU100 veri çekme (Yahoo→İş Yatırım fallback) [eski projeden, hâlâ kullanılır]",
+    "ILERI_DURUM.md     — ÇIKTI: günlük duruş + risk pozisyonu + 4-çizgi karne (oku-panosu)",
+    "ileri_gunluk.csv   — ÇIKTI: ham günlük kayıt (tarih,xu100,reel,durus,agirlik) — ileri-test verisi",
+    ".github/workflows/backtest.yml — cron (her iş günü 07:00 UTC) + git add -A + Telegram env",
 ]
 
 # ══════════════════════════════════════════════════════════════
-# SIRADAKİ ADIMLAR (öncelik sırasına göre)
+# ESKİ / TERK EDİLMİŞ (edge-avı dönemi — artık aktif DEĞİL, silinebilir)
 # ══════════════════════════════════════════════════════════════
-SIRADAKI = [
-    "0) BASELINE: repo + yukarıdaki mutabakat → konsolide, hatasız v1.0 temel → GitHub'a yükle. "
-    "Bundan sonraki her şey bunun üstüne PARÇA PARÇA biner.",
-    "1) Pas-2 cüzdan dosyasını canlıya al (hazır): gerçek 8 pozisyon + portföy değeri görünsün.",
-    "2) DÜRÜST YOLU BAĞLA (teşhis #1): (a) av_skoru'na ai_model olasılığını dahil et / göstergeyi "
-    "ML ile barıştır; (b) UI'yi robot_motor._risk yerine performans.risk_metrikleri'ne bağla; "
-    "(c) karne.skor yerine oz_puanlama'yı göster.",
-    "3) BACKTEST'İ ONAR (teşhis #3): analiz_et'e backtest=True (tazelik bypass) + komisyon + "
-    "mevduat eşiği → edge'i DÜRÜSTÇE ölçebil. Sonra stratejiyi bu dürüst ölçüye göre yargıla.",
-    "4) SESSİZ BOZULMAYI GÖRÜNÜR YAP (teşhis #4): veri-kaynağı/kalite etiketi + katman çökme logu.",
-    "5) SUPABASE kalıcılığı: sinyal + robot işlemleri kalıcı kaydedilsin → gerçek doğrulanabilir sicil.",
-    "6) Sicil birikince (Katman 1 öz-kalibrasyon): edge yoksa stratejiyi değiştir — "
-    "reverse-engineering (ör. Tera Yatırım giriş/çıkış şablonu) veya temel/makro özellik katmanı. "
-    "Şu an sistem %100 teknik/fiyat-türevli; 15dk gecikmeli günlük veride en kalabalık, en düşük-edge alan.",
+ESKI_DOSYALAR = (
+    "robot.py, karar.py, niyet.py, gecmis.py, piyasa.py, ruzgar.py, performans.py, grafik.py, "
+    "alarm.py, volatilite.py, karakter.py, hacim.py, zaman.py, izleme.py, strateji.py, radar.py, "
+    "genislik.py, psikoloji.py, seffaflik.py, kalibrasyon.py, ai_model.py, fibonacci.py, analiz.py, "
+    "tarama_core.py, app.py, arayuz.py, cuzdan.py, backtest.py — eski Streamlit/robot mimarisi. "
+    "Bunların ürettiği teknik/momentum/temel sinyaller rigorlu testte mevduata yenildi. "
+    "Referans için durabilir ama CANLI yola bağlı değiller."
+)
+
+# ══════════════════════════════════════════════════════════════
+# BAKIM (yavaş, küçük işler)
+# ══════════════════════════════════════════════════════════════
+BAKIM = [
+    "makro_veri.py: yeni PPK faiz kararı / TÜİK enflasyonu çıkınca MAKRO tablosuna bir çeyrek ekle. "
+    "Eklemezsen OECD birkaç ay gecikmeyle devralır; sistem durmaz.",
+    "Karne: birkaç hafta sonra 4 çizginin (risk-ölçekli/duruş/endeks/mevduat) ayrışmasına bak.",
+    "Cron: günlük commit repo'yu aktif tutar → GitHub 60-gün durdurma kuralı tetiklenmez.",
+    "Güvenlik: BotFather token'ı sohbette geçti — ciddi kullanımda /revoke ile yenile.",
+    "Temizlik: telegram_test.py ölü (silinebilir). .gitignore __pycache__'i durdurur.",
 ]
+
+# ══════════════════════════════════════════════════════════════
+# SONRAKİ (eğer gerçekten bir şey eklenecekse — sırayla, yorgunken DEĞİL)
+# ══════════════════════════════════════════════════════════════
+SONRAKI_HEDEF = (
+    "Önce ileri test birikecek (takvim işi). Sonra OPSİYONEL, hepsi dürüst kalmak şartıyla: "
+    "(1) DD bütçesini ayarlanabilir yap. (2) Karne yeterince dolunca risk-ölçekli stratejinin "
+    "gerçek ileri-Sharpe'ını ölç. (3) makro_oto faiz vekilini (IR3TIB) politika faizine kalibre et. "
+    "ASLA: yeni getiri-stratejisi backtest'i — o soru kapandı, cevabı TEMEL_BULGU'da."
+)
 
 
 def durum_metni():
-    s = ["📍 APEX — DURUM", "=" * 50, f"\nSÜRÜM: {SURUM}", f"GÜNCELLEME: {SON_GUNCELLEME}"]
-    s.append(f"\nŞU AN: {SU_AN['asama']}")
-    s.append("\nTEŞHİS (kısa):\n  " + TESHIS["tek_cumle"])
-    s.append("\nSIRADAKİ:")
-    for a in SIRADAKI:
-        s.append(f"  {a}")
+    s = ["📍 APEX — DURUM", "=" * 50]
+    s.append(f"\nSÜRÜM: {SURUM}\n{SON_GUNCELLEME}")
+    s.append(f"\n── TEMEL BULGU ──\n{TEMEL_BULGU['soru']}\n→ {TEMEL_BULGU['cevap']}\n"
+             f"Ayakta kalan: {TEMEL_BULGU['ayakta_kalan']}\nDers: {TEMEL_BULGU['ders']}")
+    s.append(f"\nŞU AN: {SU_AN['asama']}\nSIRADAKİ: {SU_AN['siradaki_adim']}")
+    s.append("\n── CANLI ÇEKİRDEK ──")
+    for d in CANLI_DOSYALAR:
+        s.append(f"  {d}")
+    s.append(f"\n── BAKIM ──")
+    for b in BAKIM:
+        s.append(f"  • {b}")
+    s.append(f"\nSONRAKİ:\n  {SONRAKI_HEDEF}")
     return "\n".join(s)
 
 
