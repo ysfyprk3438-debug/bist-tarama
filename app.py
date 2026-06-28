@@ -507,8 +507,12 @@ function sparkSVG(hist,ma50,ma200,kesisim,cone){
   var all=hist.concat(ma50||[],ma200||[]).filter(num);
   if(fut){cone.forEach(function(c){if(num(c.ust))all.push(c.ust);if(num(c.alt))all.push(c.alt);});}
   var mn=Math.min.apply(null,all),mx=Math.max.apply(null,all);if(mx-mn<1e-6){mx+=1;mn-=1;}
-  var total=(L-1)+fut;
-  function X(i){return pad+(W-2*pad)*(i/total);}
+  var histFrac=fut?0.76:1.0;
+  var histW=(W-2*pad)*histFrac, futW=(W-2*pad)-histW;
+  function X(i){
+    if(i<=L-1) return pad + (L>1?histW*(i/(L-1)):0);
+    return pad + histW + (fut>0?futW*((i-(L-1))/fut):0);
+  }
   function Y(v){return pad+(H-2*pad)*(1-(v-mn)/(mx-mn));}
   function path(arr,col,w,op){if(!arr||arr.length<2)return '';var d='';for(var i=0;i<arr.length;i++){d+=(i?'L':'M')+X(i).toFixed(1)+' '+Y(arr[i]).toFixed(1)+' ';}
     return '<path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="'+w+'"'+(op?' opacity="'+op+'"':'')+'/>';}
@@ -520,7 +524,7 @@ function sparkSVG(hist,ma50,ma200,kesisim,cone){
     for(var j=fut-1;j>=0;j--){poly+='L '+X(lx+1+j).toFixed(1)+' '+Y(cone[j].alt).toFixed(1)+' ';}
     poly+='Z';
     s+='<path d="'+poly+'" fill="#4FB8A4" opacity="0.13" stroke="none"/>';
-    s+='<line x1="'+X(lx).toFixed(1)+'" y1="'+Y(ly).toFixed(1)+'" x2="'+X(total).toFixed(1)+'" y2="'+Y(ly).toFixed(1)+'" stroke="#9AA4A0" stroke-width="1" stroke-dasharray="3 3"/>';
+    s+='<line x1="'+X(lx).toFixed(1)+'" y1="'+Y(ly).toFixed(1)+'" x2="'+X(L-1+fut).toFixed(1)+'" y2="'+Y(ly).toFixed(1)+'" stroke="#9AA4A0" stroke-width="1" stroke-dasharray="3 3"/>';
     s+='<line x1="'+X(lx).toFixed(1)+'" y1="'+pad+'" x2="'+X(lx).toFixed(1)+'" y2="'+(H-pad)+'" stroke="#2A3742" stroke-width="1" stroke-dasharray="2 3"/>';
   }
   s+=path(ma200,'#5E6B72',1.2);s+=path(ma50,'#4FB8A4',1.4,.8);s+=path(hist,'#E8E4D8',1.8);
@@ -560,6 +564,39 @@ function riskKutu(rd){
     '<div class="faint" style="font-size:11px;margin-top:7px">Bu skor \'kesin duser\' demez; buradan asagi hareketin ne kadar normal/beklenir oldugunu soyler. Yon tahmini DEGIL.</div></div>';
 }
 
+/* ---- AKILLI SADE OZET (sentez, tek bakista) ---- */
+function ozetKutu(s){
+  if(!s.veri) return '';
+  var px=s.px, m50=(s.ma50&&s.ma50.length)?s.ma50[s.ma50.length-1]:null, m200=(s.ma200&&s.ma200.length)?s.ma200[s.ma200.length-1]:null;
+  var trend='trend okunamadi', tcol='dim';
+  if(num(px)&&num(m50)&&num(m200)){
+    if(px>m50&&m50>m200){trend='uzun vadeli YUKSELIS tarafinda \u2014 fiyat hem MA50 hem MA200 ustunde';tcol='up';}
+    else if(px<m50&&m50<m200){trend='DUSUS tarafinda \u2014 fiyat hem MA50 hem MA200 altinda';tcol='dn';}
+    else{trend='KARISIK/yatay \u2014 fiyat ortalamalar arasinda, net yon yok';tcol='am';}
+  }
+  var rsiTxt='';
+  if(num(s.rsi)){
+    if(s.rsi>=70) rsiTxt='RSI '+s.rsi+' \u2014 asiri alima yakin (70 ustu); kisa vadede geri cekilme olagan.';
+    else if(s.rsi<=30) rsiTxt='RSI '+s.rsi+' \u2014 asiri satimda (30 alti); tepki yukselisi gorulebilir.';
+    else if(s.rsi>=60) rsiTxt='RSI '+s.rsi+' \u2014 alici tarafi bir miktar baskin, ama asiri degil.';
+    else if(s.rsi<=40) rsiTxt='RSI '+s.rsi+' \u2014 satici tarafi bir miktar baskin, ama asiri degil.';
+    else rsiTxt='RSI '+s.rsi+' \u2014 notr bolge (ne asiri alim ne asiri satim).';
+  }
+  var riskTxt='';
+  if(s.risk_dusus){var rk=s.risk_dusus.skor; riskTxt='Dusus riski '+rk+'/100 ('+(rk>=60?'yuksek':(rk>=30?'orta':'dusuk'))+').';}
+  var momTxt = num(s.ay3)?(' Son 3 ay: %'+(s.ay3>0?'+':'')+s.ay3+'.'):'';
+  var coneTxt='';
+  if(s.cone&&s.cone.length){var L=s.cone[s.cone.length-1]; coneTxt='Onumuzdeki 5 gunde fiyat ~%80 ihtimalle \u20BA'+L.alt+' \u2013 \u20BA'+L.ust+' arasinda oynayabilir \u2014 yon tahmini DEGIL, sadece olasi genislik.';}
+  return '<div class="stamp" style="border-left-color:var(--teal);background:rgba(79,184,164,.07)">'+
+    '<div style="font-family:var(--disp);font-weight:600;color:var(--bone);font-size:13px;margin-bottom:8px">\uD83D\uDCCD '+s.tk+' su an nerede? (sade ozet)</div>'+
+    '<div class="'+tcol+'" style="font-size:13px;margin-bottom:6px">'+trend+'.</div>'+
+    ((riskTxt||momTxt)?'<div class="dim" style="font-size:12.5px;margin-bottom:4px">'+riskTxt+momTxt+'</div>':'')+
+    (rsiTxt?'<div class="dim" style="font-size:12.5px;margin-bottom:4px">'+rsiTxt+'</div>':'')+
+    (coneTxt?'<div class="dim" style="font-size:12.5px;margin-bottom:4px">'+coneTxt+'</div>':'')+
+    '<div class="faint" style="font-size:11px;margin-top:7px">Bu bir OZET \u2014 mevcut tablonun sade okumasi. Tahmin ya da \'al\' DEGIL; sistem yon soylemez, karar sende.</div>'+
+    '</div>';
+}
+
 /* ---- GRAFIK OGRETMEN (her ogenin anlami + o anki durum) ---- */
 function ogretmenKutu(s){
   var px=num(s.px)?s.px:null;
@@ -579,7 +616,13 @@ function ogretmenKutu(s){
     '<div style="margin-bottom:9px"><b style="color:#9AA4A0">MA200 (gri cizgi)</b> \u2014 son 200 gunun ortalamasi; UZUN vadeli ana yon. Ustundeyse boga, altindaysa ayi tarafi. '+
       '<span class="'+b[1]+'">Fiyat su an MA200\'un '+b[0]+'.</span></div>'+
     '<div style="margin-bottom:9px"><b class="am">Altin kesisim</b> / <b class="dn">olum kesisim</b> \u2014 MA50, MA200\'u yukari keserse ALTIN (yukselis baslangici sayilir), asagi keserse OLUM (dusus baslangici). Grafikte yuvarlak nokta. <span class="dim">('+kes+')</span></div>'+
-    '<div><b style="color:#4FB8A4">Projektor (sagdaki huni)</b> \u2014 onumuzdeki 5 gunun OLASI fiyat araligi. Yon tahmin ETMEZ (ortasi duz gider); sadece nereye kadar oynayabilecegini gosterir. Huni genisse oynaklik yuksek.</div>'+
+    '<div style="margin-bottom:9px"><b style="color:#4FB8A4">Projektor (sagdaki huni)</b> \u2014 onumuzdeki 5 gunun OLASI fiyat araligi. Yon tahmin ETMEZ (ortasi duz gider); sadece nereye kadar oynayabilecegini gosterir. Huni genisse oynaklik yuksek.</div>'+
+    '<div style="border-top:1px solid var(--line);margin:10px 0"></div>'+
+    '<div style="margin-bottom:7px"><b>RSI(14)</b> \u2014 0-100 arasi bir "isi" gostergesi. 70 ustu asiri alim (pahali/yorgun, geri cekilme olabilir), 30 alti asiri satim (ucuz, tepki gelebilir), ortasi notr.</div>'+
+    '<div style="margin-bottom:7px"><b>Yillik vol</b> \u2014 hissenin oynaklik derecesi. Yuksekse fiyat sert oynar (firsat+risk buyuk), dususkse sakin.</div>'+
+    '<div style="margin-bottom:7px"><b>R/Odul</b> \u2014 teknik hedefe kazanc / stop\'a risk. 2x = kazanirsan kaybinin 2 kati; 1\'in altina dikkat.</div>'+
+    '<div style="margin-bottom:7px"><b>Destek / Direnc</b> \u2014 destek: son 60 gunun tabani; direnc: tavani. Yakininda tepki olagandir.</div>'+
+    '<div><b>ATR stop</b> \u2014 hissenin kendi oynakligina gore "buradan asagisi tez yanlis" cizgisi; kaybi butcede tutar.</div>'+
     '</div></details>';
 }
 
@@ -627,7 +670,8 @@ function renderDetail(i){
   document.getElementById('view-dash').classList.add('hidden');
   var v=document.getElementById('view-detail');v.classList.remove('hidden');
   var ch=(typeof s.ch==='number')?s.ch:0;
-  var teknik='<div class="spark">'+sparkSVG(s.hist,s.ma50,s.ma200,s.kesisim,s.cone)+'</div>'+
+  var teknik=ozetKutu(s)+
+    '<div class="spark">'+sparkSVG(s.hist,s.ma50,s.ma200,s.kesisim,s.cone)+'</div>'+
     riskKutu(s.risk_dusus)+
     kesisimKutu(s.kesisim)+
     ogretmenKutu(s)+
