@@ -1,4 +1,3 @@
-I#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 APEX — v2.5 · KURUMSAL ARAYUZ (self-contained) · GERCEK VERI · DURUST CERCEVE
