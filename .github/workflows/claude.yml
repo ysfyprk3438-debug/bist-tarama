@@ -1,0 +1,67 @@
+name: Claude
+
+# APEX — Claude Code GitHub Actions
+# İki tetikleyici:
+#  1) Bir issue veya PR yorumunda "@claude ..." yazınca → Claude görevi yapar, PR açar.
+#  2) Yeni/güncellenen bir PR açılınca → Claude diff'i otomatik inceler, yorum bırakır.
+# Her durumda PR-tabanlı: hiçbir şey onay olmadan main'e gitmez.
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [opened, assigned]
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  # ── 1) @claude ile tetiklenen görevler ──────────────────────────────
+  claude-gorev:
+    # Sadece yorumda/issue'da "@claude" geçiyorsa çalışır
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'issues' && contains(github.event.issue.body, '@claude'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: "--model claude-sonnet-4-6 --max-turns 12"
+
+  # ── 2) Her PR'da otomatik inceleme ──────────────────────────────────
+  claude-inceleme:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: "--model claude-sonnet-4-6 --max-turns 8"
+          prompt: |
+            Bu pull request'in diff'ini incele. CLAUDE.md kurallarına uy.
+            Özellikle şunlara dikkat et ve satır satır yorum bırak:
+            1. Mantık hataları ve kenar durumlar (örn. boş veri, NaN, sıfıra bölme).
+            2. Veri sızıntısı (leakage): karar t kapanışında mı, getiri t+1 mi?
+            3. Sessiz bozulma riski (örn. eksik etiketleri sıfırla doldurma gibi).
+            4. Para/risk mantığına dokunan değişiklikler — pozisyon, stop, eşik,
+               backtest çıtası değişiyorsa AÇIKÇA işaretle ve onay iste.
+            5. Uydurma sayı/sonuç var mı — gerçek çalıştırma çıktısı olmadan rakam yazılmış mı?
+            Stil takıntısı yapma; sadece somut, ciddi bulguları bildir. Türkçe yaz.
