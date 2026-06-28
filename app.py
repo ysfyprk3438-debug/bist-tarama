@@ -1,21 +1,28 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-APEX — v1.2 · GERCEK VERI · HISSE-BASI VOL-TARGET
-Duzeltme (v1.2): "Risk %6.5" her hissede ayniydi -> her hissenin KENDI vol'una gore
-hisse-basi vol-target pozisyon agirligi. Rozet etiketi "Risk" -> "Poz".
-- Tum BIST listesi
-- Gercek fiyat + MA50/MA200 grafigi
-- Gunun kazananlari = GERCEK (olgu, damgasiz)
-- Tahmin listesi = seffaf proxy + sicil DAMGASI (~ yazi-tura)
-- Rejim/risk/merkez = canli veri gerektirmeyen durust cekirdek
-requirements.txt'e ekle:  streamlit  yfinance  numpy
+APEX — v1.3 · GERCEK VERI · HISSE-BASI VOL-TARGET + ATR STOP
+Bu surumdeki duzeltmeler (v1.2 -> v1.3):
+  1) CACHE SURUM ANAHTARI: _veri(_surum="v1.3"). Her surumde _surum'u artir ->
+     cache otomatik tazelenir, bir daha REBOOT gerekmez.
+  2) TAHMIN TAVANI (+-%40): proxy uca giderse (SELEC +%104.3) ekranda tavanlanir.
+     Siralama ham proxy ile korunur, sadece gosterim sinirlanir. Damga: sicil %49.
+  3) ATR-BAZLI STOP: stop artik 60-gun dibi degil; hisseye ozel ATR(14) ile,
+     fiyata yakin ve oynakliga duyarli. Risk/Odul gercekci olur.
+Onceki (v1.2): Risk %6.5 her hissede ayniydi -> her hissenin KENDI vol'una gore
+  hisse-basi vol-target pozisyon agirligi. Rozet "Risk" -> "Poz".
+
+requirements.txt:  streamlit  yfinance  numpy
 """
 import json, datetime, math, pathlib
 import numpy as np
 
 TEMPLATE = "apex_omurga_v1.html"
 OUT = "apex.html"
+SURUM = "v1.3"                 # <-- her deploy'da artir: v1.4, v1.5 ... (cache tazelenir)
+TAHMIN_TAVAN = 40.0           # tahmin gosterim tavani (+-%)
+ATR_K_STOP = 2.0             # stop = fiyat - K * ATR
+ATR_K_HEDEF = 3.0            # kirilim varsa hedef = fiyat + K * ATR
 
 BIST = [
     ("AKBNK","Akbank"),("GARAN","Garanti BBVA"),("ISCTR","Is Bankasi C"),("YKBNK","Yapi Kredi"),
@@ -45,7 +52,7 @@ def rejim_hesapla(bugun):
     return {"politika":pol,"enflasyon":enf,"reel":reel,"durus":durus,"lehte":lehte}
 
 def risk_pozisyon(lehte,dd=0.015,k=2.5,vol=0.29):
-    # vol = ILGILI HISSENIN yillik oynakligi (artik global sabit degil)
+    # vol = ILGILI HISSENIN yillik oynakligi (global sabit degil)
     vol=max(float(vol),0.12)          # taban: dejenere %100 agirligi onler
     hv=dd*k; a=hv/vol
     if lehte=="mevduat": a*=0.5
@@ -92,6 +99,16 @@ def yillik_vol(c):
     if len(r)<5 or np.std(r)<1e-9: return 0.29
     return float(np.std(r)*math.sqrt(252))
 
+def atr_hesapla(high,low,close,n=14):
+    # Gercek ATR: TR = max(H-L, |H-prevC|, |L-prevC|), son n'in ortalamasi (fiyat birimi)
+    high=np.asarray(high,float); low=np.asarray(low,float); close=np.asarray(close,float)
+    if len(close)<2: return None
+    prev=close[:-1]; h=high[1:]; l=low[1:]
+    tr=np.maximum(h-l, np.maximum(np.abs(h-prev), np.abs(l-prev)))
+    tr=tr[np.isfinite(tr)]
+    if len(tr)==0: return None
+    return float(np.mean(tr[-n:])) if len(tr)>=n else float(np.mean(tr))
+
 def fetch_bist():
     try:
         import yfinance as yf
@@ -104,15 +121,18 @@ def fetch_bist():
         return {}
     for s,_ in BIST:
         try:
-            sub=df[s+".IS"]["Close"].dropna(); c=sub.values.astype(float)
+            sub=df[s+".IS"][["High","Low","Close"]].dropna()
+            c=sub["Close"].values.astype(float)
             if len(c)<30: continue
+            high=sub["High"].values.astype(float); low=sub["Low"].values.astype(float)
             px=float(c[-1]); prev=float(c[-2]); ch=round((px/prev-1)*100,1)
             ay3=round((px/float(c[-63])-1)*100,1) if len(c)>=63 else None
             lo=float(np.min(c[-60:])); hi=float(np.max(c[-60:]))
-            vol=yillik_vol(c)                       # <-- HISSE-BASI OYNAKLIK
+            vol=yillik_vol(c)                                   # hisse-basi oynaklik
+            atr=atr_hesapla(high,low,c,14) or (px*0.02)         # hisse-basi ATR
             out[s]={"px":round(px,2),"ch":ch,"hist":downsample(c),"ma50":downsample(ma(c,50)),
                     "ma200":downsample(ma(c,200)),"rsi":rsi(c),"destek":round(lo,2),"direnc":round(hi,2),
-                    "ay3":ay3,"vol":round(vol,3)}
+                    "ay3":ay3,"vol":round(vol,3),"atr":round(atr,2)}
         except Exception:
             continue
     return out
@@ -129,21 +149,26 @@ def build_app_data(bugun=None, veri=None):
               "akd":[[m,"bos"] for m in ["Oca","Sub","Mar","Nis","May","Haz"]],
               "recon":[["Kapanis fiyati",(str(d["px"]) if d else "-"),"ekle","bekle"],["Takas yogunlasmasi","-","ekle","bekle"]]}
         if d:
-            hedef=d["direnc"]; stop=d["destek"]
-            rr=round(abs((hedef-d["px"])/((d["px"]-stop) or 1)),1) if d["px"] else 0
+            px=d["px"]; atr=d.get("atr") or (px*0.02)
+            # --- ATR-BAZLI STOP (60-gun dibi degil) ---
+            stop=round(max(px-ATR_K_STOP*atr, px*0.6),2)        # taban: absurd negatif/asiri stopu onler
+            # --- HEDEF: gercek 60-gun direnci; fiyat zaten kirdiysa ATR ile bir salinim yukari ---
+            direnc=d["direnc"]
+            hedef=direnc if (isinstance(direnc,(int,float)) and direnc>px) else round(px+ATR_K_HEDEF*atr,2)
+            rr=round((hedef-px)/max(px-stop,1e-9),1)
             svol=d.get("vol") or 0.29
-            rp_h=risk_pozisyon(rej["lehte"],vol=svol)        # <-- HISSE-BASI VOL-TARGET
-            base.update({"px":d["px"],"ch":d["ch"],"hist":d["hist"],"ma50":d["ma50"],"ma200":d["ma200"],
+            rp_h=risk_pozisyon(rej["lehte"],vol=svol)             # hisse-basi vol-target
+            base.update({"px":px,"ch":d["ch"],"hist":d["hist"],"ma50":d["ma50"],"ma200":d["ma200"],
                          "rsi":d["rsi"] or "-","destek":d["destek"],"direnc":d["direnc"],"hedef":hedef,"stop":stop,
-                         "rr":rr,"ay3":d["ay3"] if d["ay3"] is not None else "-","dec":"IZLE","dcol":"blue",
-                         "vol":rp_h["vol_pct"],"poz":rp_h["agirlik_pct"],
+                         "atr":d.get("atr"),"rr":rr,"ay3":d["ay3"] if d["ay3"] is not None else "-",
+                         "dec":"IZLE","dcol":"blue","vol":rp_h["vol_pct"],"poz":rp_h["agirlik_pct"],
                          "miniag":[["\U0001F9ED Rejim",rej['lehte'][:4],"m"],
                                    ["\U0001F6E1\uFE0F Poz","%{}".format(rp_h['agirlik_pct']),"m"],
                                    ["\U0001F4C8 Getiri","%{}".format(sicil),"dn" if sicil<=51 else "or"],
                                    ["\U0001F3AF Denetci","dusur","pu"]]})
         else:
             base.update({"px":"-","ch":0,"hist":[],"ma50":[],"ma200":[],"rsi":"-","destek":"-","direnc":"-",
-                         "hedef":"-","stop":"-","rr":"-","ay3":"-","dec":"VERI YOK","dcol":"m",
+                         "hedef":"-","stop":"-","atr":"-","rr":"-","ay3":"-","dec":"VERI YOK","dcol":"m",
                          "miniag":[["\U0001F9ED Rejim",rej['lehte'][:4],"m"],["\U0001F4E1 Veri","baglaninca","m"]]})
         stocks.append(base)
     verili=[s for s in stocks if isinstance(s["px"],(int,float))]
@@ -151,9 +176,11 @@ def build_app_data(bugun=None, veri=None):
     def proxy(s):
         h=s.get("hist") or []
         return (h[-1]/h[-6]-1) if len(h)>=10 else -999
-    tah=sorted(verili,key=proxy,reverse=True)[:8]
-    tahmin=[{"tk":s["tk"],"nm":s["nm"],"beklenti":round(proxy(s)*100,1),"sicil":s["sicil"]} for s in tah]
-    return {"uretildi":bugun.isoformat(),"delay_dk":15,"canli":canli,"rejim":rej,"risk":risk,
+    tah=sorted(verili,key=proxy,reverse=True)[:8]              # siralama HAM proxy ile
+    def kapali(p):                                              # gosterim +-TAHMIN_TAVAN ile sinirli
+        return round(max(-TAHMIN_TAVAN,min(TAHMIN_TAVAN,p*100)),1)
+    tahmin=[{"tk":s["tk"],"nm":s["nm"],"beklenti":kapali(proxy(s)),"sicil":s["sicil"]} for s in tah]
+    return {"uretildi":bugun.isoformat(),"surum":SURUM,"delay_dk":15,"canli":canli,"rejim":rej,"risk":risk,
             "master":{"q":q,"skor":merkez,"verdict":verdict},"ajanlar":ajan,
             "stocks":stocks,"gainers":gainers,"tahmin":tahmin,
             "defter":{"deger":100000,"nakit":100000,"pozisyon":0,"maliyet":0,"gz_acik":0,"gz_kapali":0,"komisyon":0},
@@ -173,15 +200,18 @@ def run_streamlit():
     import streamlit as st, streamlit.components.v1 as components
     st.set_page_config(page_title="APEX",page_icon="\u26A1",layout="centered")
     @st.cache_data(ttl=900)
-    def _veri(): return fetch_bist()
+    def _veri(_surum=SURUM):           # <-- SURUM degisince cache otomatik tazelenir (reboot gerekmez)
+        return fetch_bist()
     html,data=build_html(veri=_veri())
     components.html(html,height=820,scrolling=True)
     n=len([s for s in data["stocks"] if isinstance(s["px"],(int,float))])
     if not data["canli"]:
         st.warning("Canli veri cekilemedi - liste gorunur ama fiyat/grafik icin yfinance + internet gerekli. requirements.txt'e yfinance ekli mi?")
-    with st.expander("Durustluk . sayilar nereden?"):
+    with st.expander("Durustluk . sayilar nereden? ({})".format(SURUM)):
         st.write("{} hisse listede . {} tanesi canli veriyle dolu.".format(len(data['stocks']),n))
-        st.write("Rejim reel %{} -> {}. Poz rozeti artik HISSE-BASI vol-target. Merkez {}/100.".format(
+        st.write("Poz rozeti = HISSE-BASI vol-target. Stop = ATR(14)x{} (hisseye ozel). "
+                 "Tahmin gosterimi +-%{} ile tavanli.".format(ATR_K_STOP,int(TAHMIN_TAVAN)))
+        st.write("Rejim reel %{} -> {}. Merkez {}/100.".format(
             data['rejim']['reel'],data['rejim']['durus'],data['master']['skor']))
 
 import sys as _sys
@@ -190,5 +220,5 @@ if "streamlit" in _sys.modules:
 elif __name__=="__main__":
     out,data=write_html()
     n=len([s for s in data["stocks"] if isinstance(s["px"],(int,float))])
-    print("OK {} . {} hisse listede ({} canli) . rejim {} . merkez {}/100".format(
-        out,len(data['stocks']),n,data['rejim']['durus'],data['master']['skor']))
+    print("OK {} . {} . {} hisse listede ({} canli) . rejim {} . merkez {}/100".format(
+        out,SURUM,len(data['stocks']),n,data['rejim']['durus'],data['master']['skor']))
