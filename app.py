@@ -20,7 +20,7 @@ import json, datetime, math, pathlib
 import numpy as np
 
 OUT = "apex.html"
-SURUM = "v2.0"
+SURUM = "v2.1"
 TAHMIN_TAVAN = 40.0
 ATR_K_STOP = 2.0
 ATR_K_HEDEF = 3.0
@@ -326,6 +326,21 @@ body{background:var(--ink);color:var(--bone);font-family:var(--body);line-height
 .hidden{display:none}
 .disc{text-align:center;font-family:var(--mono);font-size:10px;color:var(--faint);
   letter-spacing:.04em;margin-top:28px;padding-top:16px;border-top:1px solid var(--line)}
+/* ---- responsive (mobil tasma fix) ---- */
+@media (max-width:640px){
+  .wrap{padding:0 12px 56px}
+  .hero{grid-template-columns:1fr;gap:16px;padding:18px;text-align:center}
+  .gauge{margin:0 auto}
+  .verdict h2{font-size:14px}
+  .verdict p{max-width:none}
+  .axes{justify-content:center;flex-wrap:wrap;gap:12px}
+  .cards{grid-template-columns:1fr;gap:10px}
+  .card .v{font-size:21px}
+  .dgrid{grid-template-columns:repeat(2,1fr)}
+  .dhead .px{margin-left:0;width:100%;font-size:26px}
+  .row{grid-template-columns:60px 1fr 64px 50px 44px 48px;gap:6px;padding:10px 12px}
+  .row .nm{font-size:11.5px}
+}
 </style></head><body><div class="wrap">
 
 <div class="rail">
