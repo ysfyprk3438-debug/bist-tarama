@@ -19,7 +19,7 @@ import numpy as np
 
 TEMPLATE = "apex_omurga_v1.html"
 OUT = "apex.html"
-SURUM = "v1.5"                 # <-- her deploy'da artir: v1.6, v1.7 ... (cache tazelenir)
+SURUM = "v1.6"                 # <-- her deploy'da artir: v1.7, v1.8 ... (cache tazelenir)
 TAHMIN_TAVAN = 40.0           # tahmin gosterim tavani (+-%)
 ATR_K_STOP = 2.0             # stop = fiyat - K * ATR
 ATR_K_HEDEF = 3.0            # kirilim varsa hedef = fiyat + K * ATR
@@ -223,8 +223,20 @@ def run_streamlit():
                 cg=pd.DataFrame({"Sistem (stance)":S,"Endeks":E,"Mevduat":M},index=list(g["tarih"]))
                 st.line_chart(cg, y=["Sistem (stance)","Endeks","Mevduat"],
                               color=["#f59e0b","#3b82f6","#9ca3af"], height=240)  # amber/mavi/gri
-                st.caption("N={} gun . baslangic=100 . Sistem {} . Endeks {} . Mevduat {}".format(len(g),S[-1],E[-1],M[-1]))
-                st.caption("Durust okuma: Sistem mevduati VE endeksi yendi mi? Tek-iki gun anlamsiz; N buyudukce sicil olusur.")
+                # getiri ozeti
+                c1,c2,c3=st.columns(3)
+                c1.metric("Sistem", S[-1]); c2.metric("Endeks", E[-1]); c3.metric("Mevduat", M[-1])
+                # RISK ekseni (APEX'in dogrulanmis degeri): MaxDD kucuk = iyi risk disiplini
+                def _maxdd(seri):
+                    tepe=seri[0]; dd=0.0
+                    for x in seri:
+                        tepe=max(tepe,x); dd=min(dd,(x/tepe-1)*100)
+                    return round(dd,2)
+                ddS,ddE=_maxdd(S),_maxdd(E)
+                onde=max([("Sistem",S[-1]),("Endeks",E[-1]),("Mevduat",M[-1])],key=lambda t:t[1])
+                st.caption("N={} gun . baslangic=100 . su an ONDE: **{}** ({})".format(len(g),onde[0],onde[1]))
+                st.caption("Risk (MaxDD) — APEX'in dogrulanmis ekseni: Sistem **{}%** . Endeks {}% . (kucuk DD = iyi risk disiplini)".format(ddS,ddE))
+                st.caption("Durust okuma: getiri yarisinda lider degisir; ASIL bakilacak Sistem'in DD'yi endeksten kucuk tutmasi. N buyudukce netlesir.")
             else:
                 st.info("Henuz veri yok.")
         else:
