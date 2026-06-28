@@ -38,7 +38,7 @@ import json, datetime, math, pathlib
 import numpy as np
 
 OUT = "apex.html"
-SURUM = "v2.9"
+SURUM = "v3.0"
 TAHMIN_TAVAN = 40.0
 ATR_K_STOP = 2.0
 ATR_K_HEDEF = 3.0
@@ -331,6 +331,122 @@ def risk_skoru(rd, tuzak, rsi_val, vol_frac):
     else: kat, renk = "DUSUK", "teal"
     surucu = [s[0] for s in sorted(surucu, key=lambda x: -x[1])[:3]]
     return {"skor": skor, "kat": kat, "renk": renk, "surucu": surucu}
+
+
+# ══════════════════════════════════════════════════════════════
+# AKD (Araci Kurum Dagilimi) — ForInvest akdAt verisi
+# ══════════════════════════════════════════════════════════════
+# Veri AKISI: ForInvest MCP -> Claude Desktop (Yusuf'un makinesi) gunluk
+# ceker -> akd_takas.json'a yazilir -> repoya konur -> bu terminal okur.
+# Streamlit Cloud MCP CAGIRAMAZ; sadece JSON snapshot okur. Dosya yoksa "—".
+#
+# JSON sema (akdAt inputType=symbol ciktisindan turetilir):
+# {
+#   "uretildi": "2026-06-26T18:30",
+#   "kaynak": "ForInvest akdAt",
+#   "hisseler": {
+#     "THYAO": {
+#       "tarih": "20260626",
+#       "grand_total_amount": <GrandTotalAmount, TL>,
+#       "grand_net_amount":   <GrandNetAmount, TL>,
+#       "alici":  [ {"broker":"BMK","ad":"...","net_amount":..,"total_amount":..,"tip":"yabanci|fon|yerli|?"}, ... ilk 5 net alici ],
+#       "satici": [ {"broker":"...","net_amount":..(negatif),"total_amount":..,"tip":".."}, ... ilk 5 net satici ]
+#     }, ...
+#   }
+# }
+AKD_DOSYA = "akd_takas.json"
+AKD_KONS_ESIK = 60.0          # tek broker hacmin >%60'i -> konsantrasyon bayragi
+_AKD_CACHE = {"yuklendi": False, "veri": {}}
+
+def akd_oku():
+    """akd_takas.json'u bir kez okur (cache'ler). Dosya yoksa/bozuksa bos dict.
+    UYDURMA YOK: dosya yoksa AKD ozelligi sessizce '—' kalir."""
+    if _AKD_CACHE["yuklendi"]:
+        return _AKD_CACHE["veri"]
+    veri = {}
+    try:
+        p = pathlib.Path(AKD_DOSYA)
+        if p.exists():
+            ham = json.loads(p.read_text(encoding="utf-8"))
+            if isinstance(ham, dict) and isinstance(ham.get("hisseler"), dict):
+                veri = ham
+    except Exception:
+        veri = {}
+    _AKD_CACHE["yuklendi"] = True; _AKD_CACHE["veri"] = veri
+    return veri
+
+def akd_hisse(sym):
+    """Tek hissenin AKD snapshot'i (dict) veya None."""
+    v = akd_oku()
+    if not v:
+        return None
+    return (v.get("hisseler") or {}).get(sym)
+
+def _akd_konsantrasyon(akd_sym):
+    """En buyuk islem hacmine sahip brokerin toplam hacme oranini (%) dondurur.
+    (broker_ad, yuzde) veya (None, None). 'broker' tuzak bayragini besler."""
+    if not akd_sym:
+        return None, None
+    gt = akd_sym.get("grand_total_amount")
+    try:
+        gt = float(gt)
+    except Exception:
+        gt = 0.0
+    if gt <= 0:
+        return None, None
+    en_ad, en_pay = None, 0.0
+    for grup in ("alici", "satici"):
+        for b in (akd_sym.get(grup) or []):
+            try:
+                ta = float(b.get("total_amount") or 0.0)
+            except Exception:
+                ta = 0.0
+            pay = ta / gt * 100.0
+            if pay > en_pay:
+                en_pay = pay; en_ad = b.get("ad") or b.get("broker") or "?"
+    if en_ad is None:
+        return None, None
+    return en_ad, round(en_pay, 1)
+
+def _akd_yabanci_fon_net(akd_sym):
+    """Yabanci+fon brokerlarin TEK GUNLUK net TL akisini dondurur (toplam).
+    tip alani yoksa None. Tek gun 'son donem' DEGIL — yon icin BILGI, bayrak DEGIL."""
+    if not akd_sym:
+        return None
+    tipli = False; net = 0.0
+    for grup in ("alici", "satici"):
+        for b in (akd_sym.get(grup) or []):
+            t = (b.get("tip") or "").lower()
+            if t in ("yabanci", "fon", "yabancı"):
+                tipli = True
+                try:
+                    net += float(b.get("net_amount") or 0.0)
+                except Exception:
+                    pass
+    return net if tipli else None
+
+def akd_bayraklari(akd_sym):
+    """AKD'den OTOMATIK turetilebilen tuzak bayraklari + bilgi metrikleri.
+    Donen:
+      oto_manuel : {"broker": "yanan"|"temiz"}  -> manuel bayrak on-doldurmasi
+                   (sadece HESAPLANABILEN bayrak; digerleri 'bilinmiyor' kalir)
+      bilgi      : UI'da gosterilecek ham metrikler (uydurmasiz)
+    AKD yoksa None."""
+    if not akd_sym:
+        return None
+    en_ad, en_pay = _akd_konsantrasyon(akd_sym)
+    oto_manuel = {}
+    if en_pay is not None:
+        oto_manuel["broker"] = "yanan" if en_pay > AKD_KONS_ESIK else "temiz"
+    yf_net = _akd_yabanci_fon_net(akd_sym)
+    alici = (akd_sym.get("alici") or [])[:5]
+    satici = (akd_sym.get("satici") or [])[:5]
+    bilgi = {"tarih": akd_sym.get("tarih"),
+             "en_buyuk_broker": en_ad, "en_buyuk_pay": en_pay,
+             "yabanci_fon_net": yf_net,
+             "alici": alici, "satici": satici,
+             "grand_net": akd_sym.get("grand_net_amount")}
+    return {"oto_manuel": oto_manuel, "bilgi": bilgi}
 
 
 def fetch_bist():
@@ -1039,15 +1155,76 @@ def run_streamlit():
             else:
                 st.caption("Bu hisse icin oto bayrak hesaplanamadi (fiyat/hacim yetersiz).")
             st.markdown("---")
-            st.caption("Asagidaki 6 bayrak ForInvest/takas verisi ister — elle gir. "
+            # ── ForInvest AKD snapshot (varsa) — bilgi paneli + broker bayrak on-dolum ──
+            akd_b = akd_bayraklari(akd_hisse(sec["tk"]))
+            akd_oto = {}
+            if akd_b:
+                bg = akd_b["bilgi"]; akd_oto = akd_b.get("oto_manuel", {})
+                def _tl(x):
+                    try: x=float(x)
+                    except Exception: return "—"
+                    a=abs(x)
+                    if a>=1e9: return ("{:+.2f} mlr\u20BA").format(x/1e9)
+                    if a>=1e6: return ("{:+.1f} mln\u20BA").format(x/1e6)
+                    return ("{:+.0f}\u20BA").format(x)
+                pay=bg.get("en_buyuk_pay"); brk=bg.get("en_buyuk_broker"); yfn=bg.get("yabanci_fon_net")
+                satir=("\U0001F4E1 <b>ForInvest AKD</b> &middot; {t} &nbsp;|&nbsp; "
+                       "En buyuk islemci: <b>{b}</b> (hacmin %{p})").format(
+                           t=bg.get("tarih") or "—", b=brk or "—",
+                           p=(pay if pay is not None else "—"))
+                if yfn is not None:
+                    satir += " &nbsp;|&nbsp; Yabanci/fon net (gun): <b>{}</b>".format(_tl(yfn))
+                st.markdown("<div style='font-size:12px;color:#9AA4A0;background:rgba(79,184,164,.06);"
+                            "border-left:3px solid #4FB8A4;padding:8px 12px;border-radius:4px;margin:4px 0'>"
+                            +satir+"</div>", unsafe_allow_html=True)
+                if yfn is not None:
+                    st.caption("Yabanci/fon net = TEK GUNLUK akis; 'son donem' degil. Bayrak degil, BILGI. "
+                               "Yon icin sende kalsin, tek gunle 'dagitim' demiyoruz.")
+                st.caption("'Broker konsantrasyonu' bayragi AKD'den OTOMATIK on-dolduruldu "
+                           "(tek islemci hacmin >%{} ise yanar). Istersen elle degistir.".format(int(AKD_KONS_ESIK)))
+                # ── Ilk 5 alici / ilk 5 satici tablosu (net tutar + pay) ──
+                gt_amt=bg.get("grand_net")
+                def _akd_tablo(rows, baslik, poz):
+                    if not rows: return ""
+                    h=("<div style='font-size:11px;color:#9AA4A0;margin:6px 0 2px'>"+baslik+"</div>"
+                       "<table style='width:100%;border-collapse:collapse;font-size:12px'>")
+                    for r in rows[:5]:
+                        ad=r.get("ad") or r.get("broker") or "?"
+                        na=r.get("net_amount")
+                        try: naf=float(na)
+                        except Exception: naf=None
+                        tl=_tl(naf) if naf is not None else "—"
+                        ta=r.get("total_amount")
+                        try: pay=round(float(ta)/float(bg_gt)*100,1) if bg_gt else None
+                        except Exception: pay=None
+                        renk="#4FB8A4" if poz else "#D2715A"
+                        h+=("<tr><td style='padding:2px 0'>{a}</td>"
+                            "<td style='text-align:right;color:{c}'>{t}</td>"
+                            "<td style='text-align:right;color:#9AA4A0'>{p}</td></tr>").format(
+                                a=ad,c=renk,t=tl,p=("%"+str(pay) if pay is not None else "—"))
+                    return h+"</table>"
+                try: bg_gt=float(bg.get("grand_total_amount") or 0) or float(akd_hisse(sec["tk"]).get("grand_total_amount") or 0)
+                except Exception: bg_gt=0
+                ta1=_akd_tablo(bg.get("alici"),"\u25B2 Ilk 5 net ALICI (net tutar &middot; hacim payi)",True)
+                ta2=_akd_tablo(bg.get("satici"),"\u25BC Ilk 5 net SATICI (net tutar &middot; hacim payi)",False)
+                if ta1 or ta2:
+                    tcol1,tcol2=st.columns(2)
+                    if ta1: tcol1.markdown(ta1,unsafe_allow_html=True)
+                    if ta2: tcol2.markdown(ta2,unsafe_allow_html=True)
+            else:
+                st.caption("Bu hisse icin ForInvest AKD snapshot'i yok (akd_takas.json) — 6 bayragi elle gir.")
+            st.caption("Asagidaki 6 bayrak ForInvest/takas verisi ister. "
                        "'Bilmiyorum' birakirsan tuzak SAYILMAZ ama TEMIZ de sayilmaz (kor nokta).")
             secenek=["— bilmiyorum —","Temiz","\U0001F534 Tuzak (yaniyor)"]
             harita={"— bilmiyorum —":"bilinmiyor","Temiz":"temiz","\U0001F534 Tuzak (yaniyor)":"yanan"}
+            ters={"bilinmiyor":0,"temiz":1,"yanan":2}
             manuel={}
             mc1,mc2=st.columns(2)
             for idx,(k,ad,ipucu) in enumerate(MANUEL_BAYRAK):
                 kol=mc1 if idx%2==0 else mc2
-                sv=kol.selectbox(ad,secenek,index=0,key="tz_"+sec["tk"]+"_"+k,help=ipucu)
+                on=ters.get(akd_oto.get(k,"bilinmiyor"),0)   # AKD on-dolum (yoksa bilmiyorum)
+                etiket=ad+(" \U0001F4E1" if k in akd_oto else "")
+                sv=kol.selectbox(etiket,secenek,index=on,key="tz_"+sec["tk"]+"_"+k,help=ipucu)
                 manuel[k]=harita[sv]
             birl=tuzak_birlesik(oto_t,manuel)
             renk_hex={"rust":"#D2715A","amber":"#E0A458","teal":"#4FB8A4"}.get(birl["renk"],"#9AA4A0")
