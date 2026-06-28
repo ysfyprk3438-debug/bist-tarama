@@ -183,6 +183,54 @@ def _kisa_koni(px, vol_frac, gun=5):
         out.append({"ust":round(px*math.exp(1.282*s),2),"alt":round(px*math.exp(-1.282*s),2)})
     return out
 
+def tuzak_bayraklari(close, volume=None):
+    """'TERS MATEMATIK' tuzak bayraklari — OHLCV'den HESAPLANABILEN alt-kume.
+    Pump-dump imzasini fiyat+hacimden arar. 'Al' DEMEZ; tuzak belirtisini isaretler.
+    Broker/float/takas gerektiren 6 bayrak BURADA YOK (manuel/ForInvest)."""
+    c = np.asarray(close, float)
+    if len(c) < 130:
+        return None
+    px = float(c[-1]); yanan = 0; bayrak = []
+    # 1) Parabolik yukselis
+    r6 = (px/float(c[-126])-1)*100 if len(c) >= 126 else 0.0
+    r3 = (px/float(c[-63])-1)*100 if len(c) >= 63 else 0.0
+    if r6 > 150 or r3 > 100:
+        yanan += 1; bayrak.append(["yanan","Parabolik yukselis","6 ay %"+str(round(r6))+" / 3 ay %"+str(round(r3))+" — dik, surdurulemez olabilir."])
+    else:
+        bayrak.append(["temiz","Parabolik yukselis","6 ay %"+str(round(r6))+" — asiri degil."])
+    # 2) Cliff-edge dusus
+    r1 = (px/float(c[-22])-1)*100 if len(c) >= 22 else 0.0
+    if r1 < -20:
+        yanan += 1; bayrak.append(["yanan","Cliff-edge dusus","Son 1 ay %"+str(round(r1))+" — sert kirilma/satis darbesi."])
+    else:
+        bayrak.append(["temiz","Cliff-edge dusus","Son 1 ay %"+str(round(r1))+"."])
+    # 3) Dususte hacim artisi (dagitim imzasi)
+    if volume is not None and len(volume) >= 40:
+        v = np.asarray(volume, float); rr = np.diff(c)/c[:-1]; vv = v[1:]
+        up = vv[rr > 0]; dn = vv[rr < 0]
+        if len(up) > 5 and len(dn) > 5 and np.mean(up) > 0 and np.mean(dn) > np.mean(up)*1.3:
+            yanan += 1; bayrak.append(["yanan","Dususte hacim artisi","Dusus gunu hacmi yukselis gununun "+str(round(float(np.mean(dn)/np.mean(up)),1))+" kati — dagitim olabilir."])
+        else:
+            bayrak.append(["temiz","Dususte hacim artisi","Dagitim imzasi yok."])
+    else:
+        bayrak.append(["veriyok","Dususte hacim artisi","Hacim verisi yetersiz."])
+    # 4) Pump-dump sekli (zirveye kosu + zirveden dusus)
+    zirve = float(np.max(c)); zi = int(np.argmax(c))
+    if 20 <= zi <= len(c)-5:
+        kosu = (zirve/float(c[max(0, zi-126)])-1)*100
+        dusus = (px/zirve-1)*100
+        if kosu > 120 and dusus < -25:
+            yanan += 1; bayrak.append(["yanan","Pump-dump sekli","Zirveye %"+str(round(kosu))+" kosu, sonra zirveden %"+str(round(dusus))+" dusus."])
+        else:
+            bayrak.append(["temiz","Pump-dump sekli","Klasik pump-dump sekli yok."])
+    else:
+        bayrak.append(["temiz","Pump-dump sekli","Zirve cok yeni/eski, sekil okunamadi."])
+    if yanan >= 2: kat, renk = "YUKSEK — tuzak belirtileri", "rust"
+    elif yanan == 1: kat, renk = "ORTA — tek bayrak", "amber"
+    else: kat, renk = "DUSUK — oto bayrak yok", "teal"
+    return {"yanan": yanan, "toplam_oto": 4, "kategori": kat, "renk": renk, "bayrak": bayrak}
+
+
 def fetch_bist():
     try:
         import yfinance as yf
@@ -195,10 +243,11 @@ def fetch_bist():
         return {}
     for s,_ in BIST:
         try:
-            sub=df[s+".IS"][["High","Low","Close"]].dropna()
+            sub=df[s+".IS"][["High","Low","Close","Volume"]].dropna()
             c=sub["Close"].values.astype(float)
             if len(c)<30: continue
             high=sub["High"].values.astype(float); low=sub["Low"].values.astype(float)
+            volu=sub["Volume"].values.astype(float)
             px=float(c[-1]); prev=float(c[-2]); ch=round((px/prev-1)*100,1)
             ay3=round((px/float(c[-63])-1)*100,1) if len(c)>=63 else None
             lo=float(np.min(c[-60:])); hi=float(np.max(c[-60:]))
@@ -208,7 +257,7 @@ def fetch_bist():
                     "hist":downsample(c[-D:]),"ma50":downsample(ma50f[-D:]),"ma200":downsample(ma200f[-D:]),
                     "rsi":rsi(c),"destek":round(lo,2),"direnc":round(hi,2),
                     "ay3":ay3,"vol":round(vol,3),"atr":round(atr,2),"kesisim":kesisim_analiz(c,disp_n=D),
-                    "risk_dusus":_dusus_riski(c),"cone":_kisa_koni(px,vol,gun=5)}
+                    "risk_dusus":_dusus_riski(c),"cone":_kisa_koni(px,vol,gun=5),"tuzak":tuzak_bayraklari(c,volu)}
         except Exception:
             continue
     return out
@@ -319,11 +368,11 @@ def build_app_data(bugun=None, veri=None):
                 "hedef":hedef,"stop":stop,"atr":d.get("atr"),"rr":rr,
                 "ay3":(d["ay3"] if d["ay3"] is not None else "-"),
                 "vol":rp_h["vol_pct"],"poz":rp_h["agirlik_pct"],"kesisim":d.get("kesisim"),
-                "risk_dusus":d.get("risk_dusus"),"cone":d.get("cone"),"veri":True})
+                "risk_dusus":d.get("risk_dusus"),"cone":d.get("cone"),"tuzak":d.get("tuzak"),"veri":True})
         else:
             base.update({"px":"-","ch":0,"hist":[],"ma50":[],"ma200":[],"rsi":"-","destek":"-","direnc":"-",
                 "hedef":"-","stop":"-","atr":"-","rr":"-","ay3":"-","vol":"-","poz":"-","kesisim":None,
-                "risk_dusus":None,"cone":None,"veri":False})
+                "risk_dusus":None,"cone":None,"tuzak":None,"veri":False})
         stocks.append(base)
     verili=[s for s in stocks if s.get("veri")]
     gainers=sorted(verili,key=lambda s:s["ch"],reverse=True)[:6]
@@ -616,6 +665,28 @@ function ozetKutu(s){
     '</div>';
 }
 
+/* ---- TUZAK BAYRAKLARI (ters matematik, oto alt-kume + manuel liste) ---- */
+function tuzakKutu(t){
+  if(!t) return '';
+  var cmap={rust:'var(--rust)',amber:'var(--amber)',teal:'var(--teal)'};
+  var col=cmap[t.renk]||'var(--line)';
+  var ico={yanan:'\uD83D\uDD34',temiz:'\u2713',veriyok:'\u2014'};
+  var rows='';
+  (t.bayrak||[]).forEach(function(b){
+    var c2=b[0]==='yanan'?'var(--rust)':(b[0]==='temiz'?'var(--teal)':'var(--faint)');
+    rows+='<div style="font-size:11.5px;margin-top:5px"><span style="color:'+c2+'">'+(ico[b[0]]||'')+' <b>'+b[1]+'</b></span> <span class="dim">\u2014 '+b[2]+'</span></div>';
+  });
+  var manuel=['Broker konsantrasyonu (tek broker >%60)','Float darligi (<%20 dolasim)','Maliyeti yukselen alici (markup)','Fon/yabanci net satici (dump hazirligi)','Temel anomali (ROE/F-K)','Pazar sinifi Z (yakin izleme)'];
+  var mrows=''; manuel.forEach(function(m){mrows+='<div class="faint" style="font-size:11px;margin-top:3px">\u2014 '+m+'</div>';});
+  return '<div class="stamp" style="border-left-color:'+col+'">'+
+    '<b style="color:'+col+'">\uD83C\uDFAF TUZAK BAYRAKLARI (oto): '+t.yanan+'/'+t.toplam_oto+' yandi \u2014 '+t.kategori+'</b>'+
+    rows+
+    '<div style="border-top:1px solid var(--line);margin:9px 0 5px"></div>'+
+    '<div class="faint" style="font-size:10px;text-transform:uppercase;letter-spacing:.1em">Manuel veri gereken bayraklar \u00b7 ForInvest/takas</div>'+
+    mrows+
+    '<div class="faint" style="font-size:11px;margin-top:8px">Oto bayraklar fiyat+hacimden. Tam tuzak profili icin broker/float/takas verisi elle girilmeli. <b>Ters matematik:</b> kazanani bilemeyiz, tuzagi isaretleyebiliriz.</div></div>';
+}
+
 /* ---- GRAFIK OGRETMEN (her ogenin anlami + o anki durum) ---- */
 function ogretmenKutu(s){
   var px=num(s.px)?s.px:null;
@@ -693,6 +764,7 @@ function renderDetail(i){
     '<div class="spark">'+sparkSVG(s.hist,s.ma50,s.ma200,s.kesisim,s.cone,s.stop)+'</div>'+
     projektorCumle(s)+
     riskKutu(s.risk_dusus)+
+    tuzakKutu(s.tuzak)+
     kesisimKutu(s.kesisim)+
     ogretmenKutu(s)+
     '<div class="dgrid">'+
