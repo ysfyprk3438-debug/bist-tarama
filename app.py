@@ -38,7 +38,7 @@ import json, datetime, math, pathlib
 import numpy as np
 
 OUT = "apex.html"
-SURUM = "v3.0"
+SURUM = "v3.1"
 TAHMIN_TAVAN = 40.0
 ATR_K_STOP = 2.0
 ATR_K_HEDEF = 3.0
@@ -449,6 +449,52 @@ def akd_bayraklari(akd_sym):
     return {"oto_manuel": oto_manuel, "bilgi": bilgi}
 
 
+# ══════════════════════════════════════════════════════════════
+# AKIS (gun-ici / intraday) — "su an ne oluyor" BETIMLEYICI metrikler
+# ══════════════════════════════════════════════════════════════
+# TUM metrikler BETIMLEYICIDIR: bugunu olcer, yarini TAHMIN ETMEZ.
+# Hicbiri 'al/sat' demez. 'Sayilarin agirlik siddeti' = hacim-agirligi.
+# Yon kehaneti YOK; sadece "fiyat nerede, hacim kimde, geri cekilme ne kadar".
+def akis_metrikleri(o, h, l, c, v):
+    """Intraday bar dizilerinden (orn. 5dk) gun-ici akis profili. Yetersiz -> None.
+    Donen alanlar HEPSI 'su an' durumu — gelecek imasi YOK."""
+    o = np.asarray(o, float); h = np.asarray(h, float); l = np.asarray(l, float)
+    c = np.asarray(c, float); v = np.asarray(v, float)
+    n = len(c)
+    if n < 6 or float(np.nansum(v)) <= 0:
+        return None
+    tp = (h + l + c) / 3.0
+    vsum = float(np.nansum(v))
+    vwap = float(np.nansum(tp * v) / max(vsum, 1e-9))
+    px = float(c[-1]); acilis = float(o[0])
+    vwap_pos = round((px / vwap - 1) * 100, 2) if vwap > 0 else 0.0
+    gun = round((px / acilis - 1) * 100, 2) if acilis > 0 else 0.0
+    gun_hi = float(np.nanmax(h)); gun_lo = float(np.nanmin(l))
+    tepe_geri = round((px / gun_hi - 1) * 100, 2) if gun_hi > 0 else 0.0   # zirveden % (<=0)
+    dip_toparla = round((px / gun_lo - 1) * 100, 2) if gun_lo > 0 else 0.0  # dipten % (>=0)
+    dif = np.diff(c); vv = v[1:]
+    up = float(vv[dif > 0].sum()); dn = float(vv[dif < 0].sum()); tot = up + dn
+    hacim_denge = round((up - dn) / tot * 100, 1) if tot > 0 else 0.0       # -100..+100
+    k = min(6, n - 1); rv = vv[-k:]; rtot = float(rv.sum())
+    yuklenme = round(float((np.sign(dif[-k:]) * rv).sum()) / rtot * 100, 1) if rtot > 0 else 0.0
+    orn = min(6, n); or_hi = float(np.nanmax(h[:orn])); or_lo = float(np.nanmin(l[:orn]))
+    if px > or_hi: acilis_durum = "kirilim yukari"
+    elif px < or_lo: acilis_durum = "kirilim asagi"
+    else: acilis_durum = "aralikta"
+    kb = min(12, n - 1); sv = vv[-kb:]; svt = float(sv.sum())
+    kap_yon = round(float((np.sign(dif[-kb:]) * sv).sum()) / max(svt, 1e-9) * 100, 1) if svt > 0 else 0.0
+    kap_hacim_pay = round(svt / max(vsum, 1e-9) * 100, 1)
+    yer = "VWAP ustu" if vwap_pos > 0 else ("VWAP alti" if vwap_pos < 0 else "VWAP'ta")
+    bask = ("alici yuklenmesi" if yuklenme >= 25 else
+            "satici yuklenmesi" if yuklenme <= -25 else "denge")
+    return {"vwap": round(vwap, 2), "vwap_pos": vwap_pos, "gun": gun,
+            "tepe_geri": tepe_geri, "dip_toparla": dip_toparla,
+            "hacim_denge": hacim_denge, "yuklenme": yuklenme,
+            "acilis_durum": acilis_durum, "or_hi": round(or_hi, 2), "or_lo": round(or_lo, 2),
+            "kap_yon": kap_yon, "kap_hacim_pay": kap_hacim_pay,
+            "durum": yer + " \u00b7 " + bask, "bar": n}
+
+
 def fetch_bist():
     try:
         import yfinance as yf
@@ -476,6 +522,33 @@ def fetch_bist():
                     "rsi":rsi(c),"destek":round(lo,2),"direnc":round(hi,2),
                     "ay3":ay3,"vol":round(vol,3),"atr":round(atr,2),"kesisim":kesisim_analiz(c,disp_n=D),
                     "risk_dusus":_dusus_riski(c),"cone":_kisa_koni(px,vol,gun=5),"tuzak":tuzak_bayraklari(c,volu)}
+        except Exception:
+            continue
+    return out
+
+def fetch_intraday():
+    """Tum BIST icin gun-ici 5dk barlari ceker, her hisseye akis_metrikleri uygular.
+    yfinance gun-ici veriyi sadece SON gun(ler) icin verir + 15dk GECIKMELI.
+    Piyasa kapaliysa/veri yoksa -> bos dict (UYDURMA YOK). {sym: akis_dict}."""
+    try:
+        import yfinance as yf
+    except Exception:
+        return {}
+    syms = [s + ".IS" for s, _ in BIST]; out = {}
+    try:
+        df = yf.download(syms, period="1d", interval="5m", group_by="ticker",
+                         auto_adjust=True, progress=False, threads=True)
+    except Exception:
+        return {}
+    for s, _ in BIST:
+        try:
+            sub = df[s + ".IS"][["Open", "High", "Low", "Close", "Volume"]].dropna()
+            if len(sub) < 6:
+                continue
+            m = akis_metrikleri(sub["Open"].values, sub["High"].values, sub["Low"].values,
+                                sub["Close"].values, sub["Volume"].values)
+            if m:
+                out[s] = m
         except Exception:
             continue
     return out
@@ -562,10 +635,11 @@ def karar_cercevesi(entry, hedef, vol_pct, atr, sermaye, lehte, teknik_hedef=Non
     return {"stop":stop,"poz_pct":poz,"poz_tl":poz_tl,"adet":adet,
             "riskli_tl":riskli_tl,"riskli_pct":riskli_pct,"rr":rr,"senaryo":sen}
 
-def build_app_data(bugun=None, veri=None):
+def build_app_data(bugun=None, veri=None, akis=None):
     bugun=bugun or datetime.date.today()
     rej=rejim_hesapla(bugun)
     veri=veri if veri is not None else fetch_bist(); canli=len(veri)>0
+    akis=akis if akis is not None else {}
     il=ileri_seri()
     g,r,rp=49,92,60
     merkez=round(0.55*g+0.30*r+0.15*rp)
@@ -591,12 +665,14 @@ def build_app_data(bugun=None, veri=None):
             base.update({"risk_skor":rsk["skor"],"risk_kat":rsk["kat"],"risk_renk":rsk["renk"],"risk_surucu":rsk["surucu"]})
             _sen=senaryo_cerceve(px,hedef,(svol*100.0),atr)
             base["rr_uzak"]=bool(_sen and _sen["yil_oran"]>=1.5)
+            base["akis"]=akis.get(sym)
         else:
             base.update({"px":"-","ch":0,"hist":[],"ma50":[],"ma200":[],"rsi":"-","destek":"-","direnc":"-",
                 "hedef":"-","stop":"-","atr":"-","rr":"-","ay3":"-","vol":"-","poz":"-","kesisim":None,
                 "risk_dusus":None,"cone":None,"tuzak":None,"veri":False})
             base.update({"risk_skor":"-","risk_kat":"-","risk_renk":"","risk_surucu":[]})
             base["rr_uzak"]=False
+            base["akis"]=None
         stocks.append(base)
     verili=[s for s in stocks if s.get("veri")]
     gainers=sorted(verili,key=lambda s:s["ch"],reverse=True)[:6]
@@ -1076,8 +1152,8 @@ function cell(k,v){return '<div class="dcell"><div class="k">'+k+'</div><div cla
 renderDash();
 </script></body></html>"""
 
-def build_html(veri=None):
-    data=build_app_data(veri=veri)
+def build_html(veri=None, akis=None):
+    data=build_app_data(veri=veri, akis=akis)
     inject="<script>window.__APP_DATA__ = "+json.dumps(data,ensure_ascii=False)+";</script>\n"
     html=HTML_TEMPLATE.replace("<script>",inject+"<script>",1)
     return html,data
@@ -1117,7 +1193,10 @@ def run_streamlit():
     @st.cache_data(ttl=900)
     def _veri(_surum=SURUM):
         return fetch_bist()
-    html,data=build_html(veri=_veri())
+    @st.cache_data(ttl=300)
+    def _akis(_surum=SURUM):
+        return fetch_intraday()
+    html,data=build_html(veri=_veri(), akis=_akis())
     components.html(html,height=1320,scrolling=True)
 
     with st.expander("\U0001F4CB Raporu gor"):
@@ -1143,6 +1222,35 @@ def run_streamlit():
         c1.metric("Mevcut fiyat","\u20BA{}".format(px))
         c2.metric("Yillik oynaklik","%{}".format(sec.get("vol","-")))
         c3.metric("Rejim",{"mevduat":"Mevduat","hisse":"Hisse","notr":"Notr"}.get(data["rejim"]["lehte"],"-"))
+
+        # ── AKIS PANELI (gun-ici) — BETIMLEYICI: "su an ne oluyor", tahmin DEGIL ──
+        with st.expander("\U0001F4CA Akis paneli (gun-ici) — 'su an ne oluyor', tahmin DEGIL", expanded=False):
+            ak=sec.get("akis")
+            if not ak:
+                st.caption("Bu hisse icin gun-ici (5dk) veri yok. Piyasa kapali olabilir ya da "
+                           "yfinance intraday bar dondurmedi. Acilis-kapanis arasi dolacak. Veri yoksa UYDURMUYORUZ.")
+            else:
+                def _ok(x):  # yon oku
+                    try: x=float(x)
+                    except Exception: return ""
+                    return "\u25B2" if x>0 else ("\u25BC" if x<0 else "\u25AC")
+                a1,a2,a3=st.columns(3)
+                a1.metric("VWAP'a gore","%{:+.2f}".format(ak["vwap_pos"]),help="Fiyatin gun-ici hacim-agirlikli ortalamaya uzakligi. + = ustunde.")
+                a2.metric("Gun-ici getiri","%{:+.2f}".format(ak["gun"]),help="Acilis fiyatina gore.")
+                a3.metric("Yuklenme","{:+.0f}".format(ak["yuklenme"]),help="Son ~30dk hacim-agirlikli yon. +100 tam alici, -100 tam satici.")
+                b1,b2,b3=st.columns(3)
+                b1.metric("Zirveden geri","%{:.2f}".format(ak["tepe_geri"]),help="Gun-ici tepeden mevcut geri cekilme.")
+                b2.metric("Hacim dengesi","{:+.0f}".format(ak["hacim_denge"]),help="Gun boyu: yukselen bar hacmi vs dusen bar hacmi (-100..+100).")
+                b3.metric("Kapanis baskisi","{:+.0f}".format(ak["kap_yon"]),help="Son ~1 saatin hacim-agirlikli yonu.")
+                renk="#4FB8A4" if ak["vwap_pos"]>0 else "#D2715A"
+                st.markdown("<div style='border-left:3px solid {c};padding:8px 12px;background:rgba(255,255,255,.02);"
+                            "border-radius:4px;margin-top:4px'><b style='color:{c}'>Su an: {d}</b>"
+                            "<br><span style='color:#9AA4A0;font-size:12px'>Acilis araligi: {ad} "
+                            "(OR {lo}\u2013{hi}) \u00b7 {n} bar \u00b7 15dk gecikmeli</span></div>".format(
+                                c=renk,d=ak["durum"],ad=ak["acilis_durum"],
+                                lo=ak["or_lo"],hi=ak["or_hi"],n=ak["bar"]),unsafe_allow_html=True)
+                st.caption("Hepsi BETIMLEYICI \u2014 'su an fiyat nerede, hacim kimde, geri cekilme ne kadar'. "
+                           "Hicbiri 'yukselir/al' DEMEZ. Gun-ici akis bugunu anlatir, yarini degil.")
 
         # ── TUZAK KONTROLU (10/10) — ters matematik: once "neden ALMAMALIYIM?" ──
         with st.expander("\U0001F3AF Tuzak kontrolu (10/10) — once 'neden ALMAMALIYIM?'", expanded=False):
