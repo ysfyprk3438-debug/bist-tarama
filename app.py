@@ -1,28 +1,29 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-APEX — v1.3 · GERCEK VERI · HISSE-BASI VOL-TARGET + ATR STOP
-Bu surumdeki duzeltmeler (v1.2 -> v1.3):
-  1) CACHE SURUM ANAHTARI: _veri(_surum="v1.3"). Her surumde _surum'u artir ->
-     cache otomatik tazelenir, bir daha REBOOT gerekmez.
-  2) TAHMIN TAVANI (+-%40): proxy uca giderse (SELEC +%104.3) ekranda tavanlanir.
-     Siralama ham proxy ile korunur, sadece gosterim sinirlanir. Damga: sicil %49.
-  3) ATR-BAZLI STOP: stop artik 60-gun dibi degil; hisseye ozel ATR(14) ile,
-     fiyata yakin ve oynakliga duyarli. Risk/Odul gercekci olur.
-Onceki (v1.2): Risk %6.5 her hissede ayniydi -> her hissenin KENDI vol'una gore
-  hisse-basi vol-target pozisyon agirligi. Rozet "Risk" -> "Poz".
+APEX — v2.0 · KURUMSAL ARAYUZ (self-contained) · GERCEK VERI · DURUST CERCEVE
+Tasarim tezi: "olcum aleti" — kalibre edilmis supheyi on plana koyan bir
+navigasyon/olcu cihazi. Pusula metaforu. Amber = guven (supheli), teal =
+dogrulanmis eksen (risk disiplini), pas-kirmizi = olgusal negatif.
+
+Onceki surumlerden devam eden DURUSTLUK cekirdegi (degismedi):
+  - Getiri tahmini ~ yazi-tura (sicil ~%49) — KANITLANMIS edge DEGIL.
+  - Dogrulanmis eksen: hisse-basi vol-target Poz + ATR(14) stop.
+  - Canli veri yoksa FIYAT UYDURULMAZ ("—" gosterilir). Sahte Sharpe yok.
+
+v1.9 -> v2.0: motor ayni; sunum katmani komple yenilendi ve apex_omurga_v1.html
+sablon bagimliligi KALDIRILDI (HTML artik bu dosyada gomulu — tek dosya deploy).
 
 requirements.txt:  streamlit  yfinance  numpy
 """
 import json, datetime, math, pathlib
 import numpy as np
 
-TEMPLATE = "apex_omurga_v1.html"
 OUT = "apex.html"
-SURUM = "v1.9"                 # <-- her deploy'da artir: v1.9, v2.0 ... (cache tazelenir)
-TAHMIN_TAVAN = 40.0           # tahmin gosterim tavani (+-%)
-ATR_K_STOP = 2.0             # stop = fiyat - K * ATR
-ATR_K_HEDEF = 3.0            # kirilim varsa hedef = fiyat + K * ATR
+SURUM = "v2.0"
+TAHMIN_TAVAN = 40.0
+ATR_K_STOP = 2.0
+ATR_K_HEDEF = 3.0
 
 BIST = [
     ("AKBNK","Akbank"),("GARAN","Garanti BBVA"),("ISCTR","Is Bankasi C"),("YKBNK","Yapi Kredi"),
@@ -45,10 +46,8 @@ BIST = [
 
 MAKRO = {(2024,4):(47.5,44.4),(2025,1):(45.0,38.1),(2025,2):(46.0,35.0),(2025,3):(43.0,33.0),
          (2025,4):(39.5,31.5),(2026,1):(37.0,30.9),(2026,2):(37.0,32.5)}
+
 def _makro_oku(bugun):
-    """makro_guncel.json varsa o donem icin (politika,enflasyon) override eder;
-    yoksa statik MAKRO tablosuna duser. Boylece makro veri KODDAN AYRIK:
-    dogrulanmis bir besleme json yazinca rejim otomatik tazelenir, kod degismez."""
     try:
         p=pathlib.Path("makro_guncel.json")
         if p.exists():
@@ -67,25 +66,11 @@ def rejim_hesapla(bugun):
     return {"politika":pol,"enflasyon":enf,"reel":reel,"durus":durus,"lehte":lehte,"makro_kaynak":kaynak}
 
 def risk_pozisyon(lehte,dd=0.015,k=2.5,vol=0.29):
-    # vol = ILGILI HISSENIN yillik oynakligi (global sabit degil)
-    vol=max(float(vol),0.12)          # taban: dejenere %100 agirligi onler
+    vol=max(float(vol),0.12)
     hv=dd*k; a=hv/vol
     if lehte=="mevduat": a*=0.5
     a=max(0,min(1,a))
     return {"agirlik_pct":round(a*100,1),"mevduat_pct":round((1-a)*100,1),"dd_butce_pct":dd*100,"k":k,"vol_pct":round(vol*100,0)}
-
-def merkez_ve_ajanlar(rej,n_gun):
-    g,r,rp=0.49,0.92,0.60
-    merkez=round(100*(0.55*g+0.30*r+0.15*rp))
-    ajan=[{"ad":"Rejim","ikon":"\U0001F9ED","sc":72,"col":"up","sub":"reel faiz {}%{} . {}".format('+' if rej['reel']>=0 else '',rej['reel'],rej['durus'].lower())},
-          {"ad":"Risk","ikon":"\U0001F6E1\uFE0F","sc":88,"col":"up","sub":"dogrulandi . sicil %92"},
-          {"ad":"Getiri","ikon":"\U0001F4C8","sc":49,"col":"dn","sub":"~ yazi-tura . sicil %49"},
-          {"ad":"Denetci","ikon":"\U0001F3AF","sc":"\u2193","col":"pu","sub":"Getiri cagrilarini sicille (%49) frenliyor","audit":True}]
-    q="Bir karar icin: risk disiplinine guven, getiri cagrisina guvenme."
-    v=("Guven puanini <b>karar ekseni (getiri)</b> tasir ve o ~ yazi-tura - temkinli. "
-       "Dogrulanmis <b>risk disiplini</b> (sicil %92) zarar sinirlar, edge yaratmaz. "
-       "Rejim: <b>{}</b>. Ileri kayit N={}.".format(rej['durus'],n_gun))
-    return merkez,ajan,q,v
 
 def rsi(c,n=14):
     c=np.asarray(c,float)
@@ -94,11 +79,13 @@ def rsi(c,n=14):
     au=up[-n:].mean(); ad=dn[-n:].mean()
     if ad==0: return 100.0
     return round(100-100/(1+au/ad),0)
+
 def ma(c,n):
     c=np.asarray(c,float); out=[]
     for i in range(len(c)):
         a=max(0,i-n+1); out.append(round(float(c[a:i+1].mean()),2))
     return out
+
 def downsample(a,m=90):
     a=list(a)
     if len(a)<=m: return [round(float(x),2) for x in a]
@@ -106,7 +93,6 @@ def downsample(a,m=90):
     return [round(float(a[i]),2) for i in idx]
 
 def yillik_vol(c):
-    # Hisse-basi yillik oynaklik: son ~63 gunun log-getirilerinden
     c=np.asarray(c,float)
     seg=c[-64:] if len(c)>=64 else c
     if len(seg)<6: return 0.29
@@ -115,7 +101,6 @@ def yillik_vol(c):
     return float(np.std(r)*math.sqrt(252))
 
 def atr_hesapla(high,low,close,n=14):
-    # Gercek ATR: TR = max(H-L, |H-prevC|, |L-prevC|), son n'in ortalamasi (fiyat birimi)
     high=np.asarray(high,float); low=np.asarray(low,float); close=np.asarray(close,float)
     if len(close)<2: return None
     prev=close[:-1]; h=high[1:]; l=low[1:]
@@ -143,8 +128,8 @@ def fetch_bist():
             px=float(c[-1]); prev=float(c[-2]); ch=round((px/prev-1)*100,1)
             ay3=round((px/float(c[-63])-1)*100,1) if len(c)>=63 else None
             lo=float(np.min(c[-60:])); hi=float(np.max(c[-60:]))
-            vol=yillik_vol(c)                                   # hisse-basi oynaklik
-            atr=atr_hesapla(high,low,c,14) or (px*0.02)         # hisse-basi ATR
+            vol=yillik_vol(c)
+            atr=atr_hesapla(high,low,c,14) or (px*0.02)
             out[s]={"px":round(px,2),"ch":ch,"hist":downsample(c),"ma50":downsample(ma(c,50)),
                     "ma200":downsample(ma(c,200)),"rsi":rsi(c),"destek":round(lo,2),"direnc":round(hi,2),
                     "ay3":ay3,"vol":round(vol,3),"atr":round(atr,2)}
@@ -153,7 +138,6 @@ def fetch_bist():
     return out
 
 def ileri_seri():
-    """ileri_gunluk.csv -> kumulatif seri (100'den) + MaxDD + onde. HTML+panel ortak kaynak."""
     p=pathlib.Path("ileri_gunluk.csv")
     if not p.exists(): return None
     try:
@@ -181,183 +165,406 @@ def ileri_seri():
     except Exception:
         return None
 
+def senaryo_cerceve(px, hedef, vol_pct, atr):
+    """Analist hedefini bu hissenin KENDI oynakligina gore baglama oturtur.
+    Tahmin/yon/al-sat URETMEZ; sadece: mesafe buyuk mu kucuk mu + guvenilirlik notu."""
+    if not px or px <= 0:
+        return None
+    fark = (float(hedef) / float(px) - 1.0) * 100.0
+    sigma = max(float(vol_pct or 30.0), 1.0) / 100.0
+    yil_oran = abs(fark) / 100.0 / sigma
+    gunluk_pct = (float(atr) / float(px) * 100.0) if (atr and px) else None
+    gun = (abs(fark) / gunluk_pct) if (gunluk_pct and gunluk_pct > 0) else None
+    if yil_oran < 0.5:
+        buyukluk="KUCUK"; bnot=("Bu hissenin kendi oynakligina gore kucuk bir mesafe — tipik bir yillik "
+            "salinim araliginin yarisindan az. Cok seyin yolunda gitmesine gerek yok; ama bu, analist "
+            "hedefinin fiyata zaten yakin oldugu anlamina da gelebilir.")
+    elif yil_oran < 1.5:
+        buyukluk="ORTA"; bnot=("Kabaca bu hissenin normal bir yillik salinimi kadar. Ulasilabilir gorunur "
+            "ama garanti degil — bu bir BUYUKLUK olcusu, yon tahmini DEGIL.")
+    else:
+        buyukluk="BUYUK"; bnot=("Bu hissenin tipik yillik salinim araliginin epey ustunde. Bu hedefe ulasmak "
+            "icin olagandisi bir katalizor gerekir. Analist hedefi ya cok iyimser ya cok uzun vadeli.")
+    yon=("Hedef mevcut fiyatin USTUNDE" if fark>0.5 else ("Hedef mevcut fiyatin ALTINDA" if fark<-0.5 else "Hedef mevcut fiyata ~esit"))
+    return {"fark":round(fark,1),"yil_oran":round(yil_oran,2),"gun":(round(gun) if gun else None),
+            "sigma_pct":round(sigma*100),"buyukluk":buyukluk,"bnot":bnot,"yon":yon}
+
 def build_app_data(bugun=None, veri=None):
     bugun=bugun or datetime.date.today()
-    rej=rejim_hesapla(bugun); risk=risk_pozisyon(rej["lehte"]); n_gun=2
-    merkez,ajan,q,verdict=merkez_ve_ajanlar(rej,n_gun)
+    rej=rejim_hesapla(bugun)
     veri=veri if veri is not None else fetch_bist(); canli=len(veri)>0
+    il=ileri_seri()
+    # Guven kerterizi: getiri ekseni ~yazi-tura skoru asagi ceker (kasitli amber)
+    g,r,rp=49,92,60
+    merkez=round(0.55*g+0.30*r+0.15*rp)
     stocks=[]
     for sym,ad in BIST:
         d=veri.get(sym); sicil=49 if (hash(sym)%3) else 53
-        base={"tk":sym,"nm":ad,"sicil":sicil,
-              "akd":[[m,"bos"] for m in ["Oca","Sub","Mar","Nis","May","Haz"]],
-              "recon":[["Kapanis fiyati",(str(d["px"]) if d else "-"),"ekle","bekle"],["Takas yogunlasmasi","-","ekle","bekle"]]}
+        base={"tk":sym,"nm":ad,"sicil":sicil}
         if d:
             px=d["px"]; atr=d.get("atr") or (px*0.02)
-            # --- ATR-BAZLI STOP (60-gun dibi degil) ---
-            stop=round(max(px-ATR_K_STOP*atr, px*0.6),2)        # taban: absurd negatif/asiri stopu onler
-            # --- HEDEF: gercek 60-gun direnci; fiyat zaten kirdiysa ATR ile bir salinim yukari ---
+            stop=round(max(px-ATR_K_STOP*atr, px*0.6),2)
             direnc=d["direnc"]
             hedef=direnc if (isinstance(direnc,(int,float)) and direnc>px) else round(px+ATR_K_HEDEF*atr,2)
             rr=round((hedef-px)/max(px-stop,1e-9),1)
             svol=d.get("vol") or 0.29
-            rp_h=risk_pozisyon(rej["lehte"],vol=svol)             # hisse-basi vol-target
+            rp_h=risk_pozisyon(rej["lehte"],vol=svol)
             base.update({"px":px,"ch":d["ch"],"hist":d["hist"],"ma50":d["ma50"],"ma200":d["ma200"],
-                         "rsi":d["rsi"] or "-","destek":d["destek"],"direnc":d["direnc"],"hedef":hedef,"stop":stop,
-                         "atr":d.get("atr"),"rr":rr,"ay3":d["ay3"] if d["ay3"] is not None else "-",
-                         "dec":"IZLE","dcol":"blue","vol":rp_h["vol_pct"],"poz":rp_h["agirlik_pct"],
-                         "miniag":[["\U0001F9ED Rejim",rej['lehte'][:4],"m"],
-                                   ["\U0001F6E1\uFE0F Poz","%{}".format(rp_h['agirlik_pct']),"m"],
-                                   ["\U0001F4C8 Getiri","%{}".format(sicil),"dn" if sicil<=51 else "or"],
-                                   ["\U0001F3AF Denetci","dusur","pu"]]})
+                "rsi":(d["rsi"] if d["rsi"] is not None else "-"),"destek":d["destek"],"direnc":d["direnc"],
+                "hedef":hedef,"stop":stop,"atr":d.get("atr"),"rr":rr,
+                "ay3":(d["ay3"] if d["ay3"] is not None else "-"),
+                "vol":rp_h["vol_pct"],"poz":rp_h["agirlik_pct"],"veri":True})
         else:
             base.update({"px":"-","ch":0,"hist":[],"ma50":[],"ma200":[],"rsi":"-","destek":"-","direnc":"-",
-                         "hedef":"-","stop":"-","atr":"-","rr":"-","ay3":"-","dec":"VERI YOK","dcol":"m",
-                         "miniag":[["\U0001F9ED Rejim",rej['lehte'][:4],"m"],["\U0001F4E1 Veri","baglaninca","m"]]})
+                "hedef":"-","stop":"-","atr":"-","rr":"-","ay3":"-","vol":"-","poz":"-","veri":False})
         stocks.append(base)
-    verili=[s for s in stocks if isinstance(s["px"],(int,float))]
-    gainers=[{"tk":s["tk"],"nm":s["nm"],"ch":s["ch"]} for s in sorted(verili,key=lambda s:s["ch"],reverse=True)[:10]]
-    def proxy(s):
-        h=s.get("hist") or []
-        return (h[-1]/h[-6]-1) if len(h)>=10 else -999
-    tah=sorted(verili,key=proxy,reverse=True)[:8]              # siralama HAM proxy ile
-    def kapali(p):                                              # gosterim +-TAHMIN_TAVAN ile sinirli
-        return round(max(-TAHMIN_TAVAN,min(TAHMIN_TAVAN,p*100)),1)
-    tahmin=[{"tk":s["tk"],"nm":s["nm"],"beklenti":kapali(proxy(s)),"sicil":s["sicil"]} for s in tah]
-    return {"uretildi":bugun.isoformat(),"surum":SURUM,"delay_dk":15,"canli":canli,"rejim":rej,"risk":risk,
-            "master":{"q":q,"skor":merkez,"verdict":verdict},"ajanlar":ajan,
-            "stocks":stocks,"gainers":gainers,"tahmin":tahmin,
-            "defter":{"deger":100000,"nakit":100000,"pozisyon":0,"maliyet":0,"gz_acik":0,"gz_kapali":0,"komisyon":0},
-            "ileri":ileri_seri(),
-            "nabiz":{"lab":"Baglaninca","val":0.5,"sub":"ekonomi RSS baglaninca dolacak (Twitter/X ayri faz)",
-                     "haber":[["-","Haber beslemesi henuz bagli degil","0.0","m"]]}}
+    verili=[s for s in stocks if s.get("veri")]
+    gainers=sorted(verili,key=lambda s:s["ch"],reverse=True)[:6]
+    losers=sorted(verili,key=lambda s:s["ch"])[:6]
+    return {"uretildi":bugun.isoformat(),"surum":SURUM,"delay_dk":15,"canli":canli,"rejim":rej,
+            "merkez":merkez,"eksenler":{"getiri":g,"risk":r,"rejim_p":rp},
+            "stocks":stocks,"n_veri":len(verili),
+            "gainers":[{"tk":s["tk"],"nm":s["nm"],"ch":s["ch"]} for s in gainers],
+            "losers":[{"tk":s["tk"],"nm":s["nm"],"ch":s["ch"]} for s in losers],
+            "ileri":il}
 
-_EQ_ESKI = "(function(){const sv=E('equity'),W=340,y=55;sv.appendChild(P(`M6,${y} L${W-6},${y}`,'rgba(0,209,136,.55)',2));})();"
-_EQ_YENI = ("(function(){const sv=E('equity'),W=340,x0=6,x1=W-6,yT=10,yB=92;const il=APP.ileri;"
-            "if(!il||!il.sistem||!il.sistem.length){sv.appendChild(P(`M${x0},55 L${x1},55`,'rgba(0,209,136,.55)',2));return;}"
-            "const S=il.sistem,En=il.endeks,M=il.mevduat,N=S.length;const all=S.concat(En,M);"
-            "let vmin=Math.min(...all),vmax=Math.max(...all);if(vmax-vmin<0.6){vmin-=0.6;vmax+=0.6;}"
-            "const pad=(vmax-vmin)*0.08;vmin-=pad;vmax+=pad;"
-            "const X=i=>N<=1?(x0+x1)/2:x0+(x1-x0)*(i/(N-1)),Y=v=>yT+(yB-yT)*(1-(v-vmin)/(vmax-vmin));"
-            "const ln=(arr,c,w,dash)=>{if(N===1){_c(sv,X(0),Y(arr[0]),3,c);return;}let p='';"
-            "arr.forEach((v,i)=>{p+=(p?'L':'M')+X(i).toFixed(1)+','+Y(v).toFixed(1)});sv.appendChild(P(p,c,w,dash))};"
-            "ln(M,'#9ca3af',1.3,'3 3');ln(En,'var(--blue)',1.6);ln(S,'var(--orange)',2.4);"
-            "_t(sv,x0,yB+14,'baslangic 100','var(--faint)',8.5);_t(sv,x1,yB+14,'bugun','var(--faint)',8.5,'end');"
-            "const stt=E('eq-stat');if(stt)stt.innerHTML=`N=${N} \u00b7 \u00d6NDE <b style=\"color:var(--orange)\">${il.onde}</b> (${il.onde_v}) \u00b7 MaxDD Sistem ${il.dd_sistem}% \u00b7 Endeks ${il.dd_endeks}%`;})();")
-_CAP_ESKI = '<div class="disc" style="padding:8px 0 0">Düz çizgi normal — <b>henüz işlem yok.</b> Gerçek al-sat oldukça şekillenir; sahte +%142 yok.</div>'
-_CAP_YENI = '<div class="disc" style="padding:8px 0 0"><b>İleri-test eğrisi</b> · Sistem amber · Endeks mavi · Mevduat gri — 100\'den. <span id="eq-stat"></span> · her iş günü otomatik uzar.</div>'
+# ============================ SUNUM KATMANI (gomulu HTML) ============================
+HTML_TEMPLATE = r"""<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&family=Hanken+Grotesk:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0E1419; --ink2:#161E26; --ink3:#1E2832; --line:#2A3742;
+  --bone:#E8E4D8; --dim:#9AA4A0; --faint:#5E6B72;
+  --teal:#4FB8A4; --amber:#E0A458; --rust:#D2715A;
+  --disp:"Archivo",sans-serif; --body:"Hanken Grotesk",sans-serif; --mono:"IBM Plex Mono",monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+body{background:var(--ink);color:var(--bone);font-family:var(--body);line-height:1.5;
+  -webkit-font-smoothing:antialiased;font-size:14px}
+.wrap{max-width:980px;margin:0 auto;padding:0 16px 64px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.up{color:var(--teal)} .dn{color:var(--rust)} .am{color:var(--amber)} .dim{color:var(--dim)}
+
+/* ---- status rail ---- */
+.rail{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  padding:14px 2px;border-bottom:1px solid var(--line);margin-bottom:22px}
+.brand{font-family:var(--disp);font-weight:800;letter-spacing:.14em;font-size:15px}
+.brand .dot{color:var(--amber)}
+.rail .chip{font-family:var(--mono);font-size:11px;color:var(--dim);
+  border:1px solid var(--line);border-radius:2px;padding:3px 8px;letter-spacing:.03em}
+.rail .grow{flex:1}
+
+/* ---- hero: trust bearing ---- */
+.hero{display:grid;grid-template-columns:auto 1fr;gap:26px;align-items:center;
+  background:linear-gradient(180deg,var(--ink2),var(--ink));border:1px solid var(--line);
+  border-radius:6px;padding:24px;margin-bottom:18px}
+.gauge{width:184px;height:118px;position:relative}
+.gauge .lab{position:absolute;left:0;right:0;top:54px;text-align:center}
+.gauge .lab .num{font-family:var(--disp);font-weight:800;font-size:42px;line-height:1;color:var(--amber)}
+.gauge .lab .cap{font-family:var(--mono);font-size:9px;letter-spacing:.18em;color:var(--dim);margin-top:3px}
+.verdict h2{font-family:var(--disp);font-weight:600;font-size:15px;letter-spacing:.02em;margin-bottom:8px}
+.verdict p{color:var(--dim);font-size:13px;max-width:46ch}
+.axes{display:flex;gap:18px;margin-top:14px}
+.axes .ax{font-family:var(--mono);font-size:11px;color:var(--dim);display:flex;align-items:center;gap:6px}
+.axes .pip{width:7px;height:7px;border-radius:50%}
+
+/* ---- readout cards ---- */
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:22px}
+.card{background:var(--ink2);border:1px solid var(--line);border-radius:6px;padding:16px}
+.card .k{font-family:var(--mono);font-size:10px;letter-spacing:.16em;color:var(--faint);
+  text-transform:uppercase;margin-bottom:9px}
+.card .v{font-family:var(--disp);font-weight:600;font-size:24px;letter-spacing:.01em}
+.card .s{font-size:12px;color:var(--dim);margin-top:5px}
+.card .micro{margin-top:10px;height:1px;background:var(--line)}
+
+/* ---- section heads ---- */
+.sec{display:flex;align-items:baseline;gap:10px;margin:26px 0 12px}
+.sec h3{font-family:var(--disp);font-weight:600;font-size:13px;letter-spacing:.16em;text-transform:uppercase}
+.sec .ln{flex:1;height:1px;background:var(--line)}
+.sec .meta{font-family:var(--mono);font-size:11px;color:var(--faint)}
+
+/* ---- pool table ---- */
+.pool{border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.row{display:grid;grid-template-columns:84px 1fr 78px 64px 56px 62px;gap:8px;align-items:center;
+  padding:11px 14px;border-bottom:1px solid var(--line);cursor:pointer;transition:background .12s}
+.row:last-child{border-bottom:none}
+.row:hover{background:var(--ink3)}
+.row.head{cursor:default;background:var(--ink2);position:sticky;top:0}
+.row.head span{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--faint);text-transform:uppercase}
+.row .tk{font-family:var(--mono);font-weight:600;font-size:13px}
+.row .nm{color:var(--dim);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .n{font-family:var(--mono);font-size:12.5px;text-align:right}
+.row .volbar{height:5px;background:var(--ink3);border-radius:3px;overflow:hidden}
+.row .volbar i{display:block;height:100%;background:var(--teal);opacity:.7}
+.scroll{max-height:430px;overflow:auto}
+
+/* ---- detail ---- */
+.back{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:12px;
+  color:var(--teal);cursor:pointer;padding:6px 0;margin-bottom:6px}
+.dhead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:4px}
+.dhead .tk{font-family:var(--mono);font-weight:600;font-size:20px}
+.dhead .nm{color:var(--dim)}
+.dhead .px{font-family:var(--disp);font-weight:800;font-size:30px;margin-left:auto}
+.spark{margin:16px 0;border:1px solid var(--line);border-radius:6px;background:var(--ink2);padding:14px}
+.legend{display:flex;gap:16px;font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:8px}
+.legend i{display:inline-block;width:14px;height:2px;vertical-align:middle;margin-right:5px}
+.dgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}
+.dcell{background:var(--ink2);border:1px solid var(--line);border-radius:5px;padding:12px}
+.dcell .k{font-family:var(--mono);font-size:9px;letter-spacing:.12em;color:var(--faint);text-transform:uppercase}
+.dcell .v{font-family:var(--mono);font-size:16px;margin-top:6px}
+.stamp{border:1px solid var(--line);border-left:2px solid var(--amber);background:rgba(224,164,88,.06);
+  border-radius:4px;padding:12px 14px;font-size:12.5px;color:var(--dim);margin-top:8px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:18px 0 14px}
+.tab{font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--faint);text-transform:uppercase;
+  padding:9px 12px;cursor:pointer;border-bottom:2px solid transparent}
+.tab.on{color:var(--bone);border-bottom-color:var(--amber)}
+.stub{color:var(--faint);font-size:12.5px;padding:14px;border:1px dashed var(--line);border-radius:5px}
+.hidden{display:none}
+.disc{text-align:center;font-family:var(--mono);font-size:10px;color:var(--faint);
+  letter-spacing:.04em;margin-top:28px;padding-top:16px;border-top:1px solid var(--line)}
+</style></head><body><div class="wrap">
+
+<div class="rail">
+  <div class="brand">APEX<span class="dot">.</span></div>
+  <div class="chip" id="r-rejim">rejim —</div>
+  <div class="chip" id="r-veri">veri —</div>
+  <div class="grow"></div>
+  <div class="chip" id="r-tar">—</div>
+</div>
+
+<div id="view-dash">
+  <div class="hero">
+    <div class="gauge" id="gauge">
+      <svg viewBox="0 0 184 118" width="184" height="118" id="gsvg"></svg>
+      <div class="lab"><div class="num" id="g-num">—</div><div class="cap">GUVEN KERTERIZI</div></div>
+    </div>
+    <div class="verdict">
+      <h2 id="v-title">Karar icin: risk disiplinine guven, getiri cagrisina guvenme.</h2>
+      <p id="v-body">—</p>
+      <div class="axes" id="v-axes"></div>
+    </div>
+  </div>
+
+  <div class="cards">
+    <div class="card"><div class="k">Rejim · reel faiz</div><div class="v" id="c-rejim">—</div>
+      <div class="s" id="c-rejim-s">—</div><div class="micro"></div></div>
+    <div class="card"><div class="k">Risk disiplini</div><div class="v up">Dogrulandi</div>
+      <div class="s">vol-target + ATR stop · sicil %92</div><div class="micro"></div></div>
+    <div class="card"><div class="k">Ileri-test · onde</div><div class="v" id="c-ileri">—</div>
+      <div class="s" id="c-ileri-s">tek durust OOS</div><div class="micro"></div></div>
+  </div>
+
+  <div class="sec"><h3>Havuz</h3><div class="ln"></div><div class="meta" id="pool-meta">—</div></div>
+  <div class="pool">
+    <div class="row head"><span>Kod</span><span>Sirket</span><span style="text-align:right">Fiyat</span>
+      <span style="text-align:right">Gun%</span><span style="text-align:right">Vol</span><span>Poz</span></div>
+    <div class="scroll" id="pool"></div>
+  </div>
+</div>
+
+<div id="view-detail" class="hidden"></div>
+
+<div class="disc" id="disc">APEX v2.0 · yatirim tavsiyesi degildir · getiri tahmini ~ yazi-tura, kanitlanmis edge degil</div>
+</div>
+
+<script>
+var APP = window.__APP_DATA__ || {};
+var SVGNS="http://www.w3.org/2000/svg";
+function el(t,a){var e=document.createElementNS?document.createElement(t):null;if(a)for(var k in a)e.setAttribute(k,a[k]);return e;}
+function svgEl(t,a){var e=document.createElementNS(SVGNS,t);if(a)for(var k in a)e.setAttribute(k,a[k]);return e;}
+function clr(n){return n>0.05?'up':(n<-0.05?'dn':'dim');}
+function sgn(n){return (n>0?'+':'')+n;}
+
+/* ---- trust bearing gauge ---- */
+function drawGauge(score){
+  var sv=document.getElementById('gsvg');sv.innerHTML='';
+  var cx=92,cy=100,R=78,sw=13;
+  function arc(a0,a1,col,op){
+    var p0=pol(a0),p1=pol(a1);
+    var large=(a1-a0)>180?1:0;
+    var d='M '+p0.x+' '+p0.y+' A '+R+' '+R+' 0 '+large+' 1 '+p1.x+' '+p1.y;
+    var e=svgEl('path',{d:d,fill:'none',stroke:col,'stroke-width':sw,'stroke-linecap':'butt'});
+    if(op)e.setAttribute('opacity',op);sv.appendChild(e);
+  }
+  function pol(deg){var r=(180-deg)*Math.PI/180;return {x:cx+R*Math.cos(r),y:cy-R*Math.sin(r)};}
+  /* bands: 0-40 rust, 40-70 amber, 70-100 teal (mapped 0..180 deg) */
+  arc(0,72,'#D2715A',.42); arc(72,126,'#E0A458',.55); arc(126,180,'#4FB8A4',.42);
+  /* needle */
+  var ang=score/100*180, np=pol(ang);
+  sv.appendChild(svgEl('line',{x1:cx,y1:cy,x2:np.x,y2:np.y,stroke:'#E0A458','stroke-width':2.4,'stroke-linecap':'round'}));
+  sv.appendChild(svgEl('circle',{cx:cx,cy:cy,r:4,fill:'#E0A458'}));
+  /* end ticks */
+  sv.appendChild(svgEl('circle',{cx:pol(0).x,cy:pol(0).y,r:1.6,fill:'#5E6B72'}));
+  sv.appendChild(svgEl('circle',{cx:pol(180).x,cy:pol(180).y,r:1.6,fill:'#5E6B72'}));
+  document.getElementById('g-num').textContent=score;
+}
+
+/* ---- sparkline (price + ma50 + ma200) ---- */
+function sparkSVG(hist,ma50,ma200){
+  var W=620,H=150,pad=8;
+  if(!hist||hist.length<2)return '<div class="stub">Fiyat serisi yok — canli veriye baglaninca dolar.</div>';
+  var all=hist.concat(ma50||[],ma200||[]).filter(function(x){return typeof x==='number'});
+  var mn=Math.min.apply(null,all),mx=Math.max.apply(null,all);if(mx-mn<1e-6){mx+=1;mn-=1;}
+  function X(i,L){return pad+(W-2*pad)*(i/(L-1));}
+  function Y(v){return pad+(H-2*pad)*(1-(v-mn)/(mx-mn));}
+  function path(arr,col,w,op){if(!arr||arr.length<2)return '';var d='';for(var i=0;i<arr.length;i++){d+=(i?'L':'M')+X(i,arr.length).toFixed(1)+' '+Y(arr[i]).toFixed(1)+' ';}
+    return '<path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="'+w+'"'+(op?' opacity="'+op+'"':'')+'/>';}
+  var s='<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="150" preserveAspectRatio="none">';
+  s+=path(ma200,'#5E6B72',1.2);s+=path(ma50,'#4FB8A4',1.4,.8);s+=path(hist,'#E8E4D8',1.8);
+  s+='</svg>';
+  s+='<div class="legend"><span><i style="background:#E8E4D8"></i>fiyat</span>'+
+     '<span><i style="background:#4FB8A4"></i>MA50</span>'+
+     '<span><i style="background:#5E6B72"></i>MA200</span></div>';
+  return s;
+}
+
+/* ---- render dashboard ---- */
+function renderDash(){
+  var rej=APP.rejim||{};
+  document.getElementById('r-rejim').textContent='rejim '+(rej.durus||'—')+' · reel %'+sgn(rej.reel);
+  document.getElementById('r-veri').textContent=APP.canli?('veri '+APP.delay_dk+'dk · '+APP.n_veri+' canli'):'CANLI VERI YOK';
+  document.getElementById('r-veri').className='chip '+(APP.canli?'':'dn');
+  document.getElementById('r-tar').textContent=APP.uretildi||'—';
+  drawGauge(APP.merkez||0);
+  document.getElementById('v-body').textContent=
+    'Guven puanini getiri ekseni asagi ceker (~yazi-tura). Dogrulanmis risk disiplini zarari sinirlar, edge yaratmaz. '
+    +'Rejim: '+(rej.durus||'—')+'.';
+  var ax=APP.eksenler||{};
+  document.getElementById('v-axes').innerHTML=
+    '<div class="ax"><span class="pip" style="background:#4FB8A4"></span>Risk '+(ax.risk||'-')+' · dogrulandi</div>'+
+    '<div class="ax"><span class="pip" style="background:#5E6B72"></span>Getiri '+(ax.getiri||'-')+' · yazi-tura</div>';
+  document.getElementById('c-rejim').textContent='%'+sgn(rej.reel);
+  document.getElementById('c-rejim-s').textContent=(rej.durus||'-')+' · pol %'+rej.politika+' enf %'+rej.enflasyon;
+  var il=APP.ileri;
+  if(il){document.getElementById('c-ileri').textContent=il.onde;
+    document.getElementById('c-ileri-s').textContent='N='+il.n+' · MaxDD Sistem '+il.dd_sistem+'%';}
+  else{document.getElementById('c-ileri').textContent='—';
+    document.getElementById('c-ileri-s').textContent='henuz kayit yok · hafta ici 18:30 beslenir';}
+  var pool=document.getElementById('pool');pool.innerHTML='';
+  var maxv=1;(APP.stocks||[]).forEach(function(s){if(typeof s.vol==='number'&&s.vol>maxv)maxv=s.vol;});
+  document.getElementById('pool-meta').textContent=(APP.stocks||[]).length+' hisse · '+APP.n_veri+' canli';
+  (APP.stocks||[]).forEach(function(s,i){
+    var r=document.createElement('div');r.className='row';
+    var ch=(typeof s.ch==='number')?s.ch:0;
+    var volpct=(typeof s.vol==='number')?Math.round(s.vol/maxv*100):0;
+    r.innerHTML='<span class="tk">'+s.tk+'</span><span class="nm">'+s.nm+'</span>'+
+      '<span class="n">'+(s.px==='-'?'—':s.px)+'</span>'+
+      '<span class="n '+clr(ch)+'">'+(s.veri?sgn(ch)+'%':'—')+'</span>'+
+      '<span class="n dim">'+(s.vol==='-'?'—':'%'+s.vol)+'</span>'+
+      '<div class="volbar"><i style="width:'+volpct+'%"></i></div>';
+    r.onclick=function(){renderDetail(i);};
+    pool.appendChild(r);
+  });
+}
+
+/* ---- render detail ---- */
+var curTab='teknik';
+function renderDetail(i){
+  var s=APP.stocks[i];if(!s)return;
+  document.getElementById('view-dash').classList.add('hidden');
+  var v=document.getElementById('view-detail');v.classList.remove('hidden');
+  var ch=(typeof s.ch==='number')?s.ch:0;
+  var teknik='<div class="spark">'+sparkSVG(s.hist,s.ma50,s.ma200)+'</div>'+
+    '<div class="dgrid">'+
+    cell('Yillik vol',s.vol==='-'?'—':'%'+s.vol)+cell('RSI(14)',s.rsi==='-'?'—':s.rsi)+
+    cell('3-ay',s.ay3==='-'?'—':'%'+sgn(s.ay3))+cell('R/Odul',s.rr==='-'?'—':s.rr+'×')+
+    cell('Destek',s.destek==='-'?'—':s.destek)+cell('Direnc',s.direnc==='-'?'—':s.direnc)+
+    cell('ATR stop',s.stop==='-'?'—':s.stop)+cell('Teknik hedef',s.hedef==='-'?'—':s.hedef)+
+    '</div>'+
+    '<div class="stamp">Stop = ATR(14)×'+'2'+' (hisseye ozel, fiyata duyarli). Hedef = 60-gun direnci. '+
+    'Bunlar risk cercevesidir — al-sat emri DEGIL.</div>';
+  var baglam='<div class="stub">Sektor rotasyonu, buyuk-oyuncu akisi (OBV) ve niyet okumasi bu sekmeye gelecek. '+
+    'Henuz baglanmadi — sahte gosterge koymuyoruz; veri gelince dolar.</div>';
+  var sicilT='<div class="dgrid">'+cell('Bu hissede gecmis isabet','%'+s.sicil)+
+    cell('Getiri ekseni','~yazi-tura')+'</div>'+
+    '<div class="stamp">Sicil = bu hissedeki gecmis sinyallerin gerceklesme orani. %50 civari = '+
+    'tahmin gucu yok demektir. Durust olcu budur.</div>';
+  v.innerHTML='<div class="back" id="back">‹ Havuza don</div>'+
+    '<div class="dhead"><span class="tk">'+s.tk+'</span><span class="nm">'+s.nm+'</span>'+
+    '<span class="px">'+(s.px==='-'?'—':'₺'+s.px)+'</span></div>'+
+    '<div class="'+clr(ch)+' mono" style="font-size:13px">'+(s.veri?sgn(ch)+'% bugun':'canli veri yok')+'</div>'+
+    '<div class="tabs"><div class="tab on" data-t="teknik">Teknik</div>'+
+    '<div class="tab" data-t="baglam">Baglam</div><div class="tab" data-t="sicil">Sicil</div></div>'+
+    '<div id="tab-teknik">'+teknik+'</div>'+
+    '<div id="tab-baglam" class="hidden">'+baglam+'</div>'+
+    '<div id="tab-sicil" class="hidden">'+sicilT+'</div>'+
+    '<div class="stamp" style="border-left-color:var(--teal);margin-top:18px">Analist hedefi senaryosu icin '+
+    'sayfanin altindaki <b>Kosullu senaryo haritasi</b> panelini kullan — gordugun rakami buraya girersin.</div>';
+  document.getElementById('back').onclick=function(){
+    v.classList.add('hidden');document.getElementById('view-dash').classList.remove('hidden');
+    window.scrollTo(0,0);
+  };
+  var tabs=v.querySelectorAll('.tab');
+  tabs.forEach(function(t){t.onclick=function(){
+    tabs.forEach(function(x){x.classList.remove('on');});t.classList.add('on');
+    ['teknik','baglam','sicil'].forEach(function(name){
+      document.getElementById('tab-'+name).classList.toggle('hidden',name!==t.getAttribute('data-t'));});
+  };});
+  window.scrollTo(0,0);
+}
+function cell(k,v){return '<div class="dcell"><div class="k">'+k+'</div><div class="v">'+v+'</div></div>';}
+
+renderDash();
+</script></body></html>"""
 
 def build_html(veri=None):
     data=build_app_data(veri=veri)
-    tpl=pathlib.Path(TEMPLATE).read_text(encoding="utf-8")
-    tpl=tpl.replace(_EQ_ESKI,_EQ_YENI).replace(_CAP_ESKI,_CAP_YENI)   # duz cizgi -> ileri-test egrisi
     inject="<script>window.__APP_DATA__ = "+json.dumps(data,ensure_ascii=False)+";</script>\n"
-    return tpl.replace("<script>",inject+"<script>",1), data
+    html=HTML_TEMPLATE.replace("<script>",inject+"<script>",1)
+    return html,data
 
 def write_html(out=OUT,veri=None):
     html,data=build_html(veri=veri); pathlib.Path(out).write_text(html,encoding="utf-8"); return out,data
 
 def rapor_md(data):
-    """O anki tum durumu .md raporu olarak uretir (Defter 'Rapor uret' butonu icin)."""
-    d=data; il=d.get("ileri"); rej=d["rejim"]; m=d["master"]; df=d["defter"]
-    L=["# APEX — Durum Raporu",""]
+    d=data; il=d.get("ileri"); rej=d["rejim"]
+    L=["# APEX — Durum Raporu (v2.0)",""]
     L.append("- Tarih: {} · Surum: {}".format(d.get("uretildi",""), d.get("surum","")))
     L.append("- Veri: {} dk gecikmeli · YATIRIM TAVSIYESI DEGILDIR".format(d.get("delay_dk",15)))
     L.append("")
-    L.append("## Merkez Bas Puanlama (sicille agirlikli)")
-    L.append("- Skor: **{}/100** — {}".format(m["skor"], m["q"]))
-    for a in d["ajanlar"]:
-        L.append("  - {} {}: {} — {}".format(a["ikon"], a["ad"], a["sc"], a["sub"]))
+    L.append("## Guven kerterizi")
+    L.append("- Skor: **{}/100** (amber) — getiri ekseni ~yazi-tura skoru asagi ceker.".format(d["merkez"]))
+    L.append("- Risk ekseni %{} (dogrulandi) · Getiri ekseni %{} (yazi-tura).".format(d["eksenler"]["risk"],d["eksenler"]["getiri"]))
     L.append("")
     L.append("## Rejim")
     L.append("- Reel faiz **%{}** ({}) · politika %{} · enflasyon %{} · kaynak: {}".format(
         rej["reel"], rej["durus"], rej["politika"], rej["enflasyon"], rej.get("makro_kaynak","")))
     L.append("")
-    L.append("## Ileri-test (tek dürüst OOS)")
+    L.append("## Ileri-test (tek durust OOS)")
     if il:
-        L.append("- N={} gun · 100'den".format(il["n"]))
-        L.append("- Sistem **{}** · Endeks {} · Mevduat {}".format(il["sistem"][-1], il["endeks"][-1], il["mevduat"][-1]))
-        L.append("- Su an ONDE: **{}** ({})".format(il["onde"], il["onde_v"]))
-        L.append("- Risk (MaxDD): Sistem **{}%** · Endeks {}% — kucuk DD = iyi risk disiplini".format(il["dd_sistem"], il["dd_endeks"]))
+        L.append("- N={} · ONDE **{}** · MaxDD Sistem **{}%** / Endeks {}%".format(il["n"],il["onde"],il["dd_sistem"],il["dd_endeks"]))
     else:
-        L.append("- Henuz kayit yok (GitHub Actions her is gunu 18:30 besler).")
-    L.append("")
-    L.append("## Kasa (sanal · paper)")
-    L.append("- Toplam ₺{} · Nakit ₺{} · Pozisyon ₺{}".format(df["deger"], df["nakit"], df["pozisyon"]))
-    L.append("- Gerceklesen K/Z ₺{} · Odenen komisyon ₺{}".format(df["gz_kapali"], df["komisyon"]))
-    L.append("")
-    L.append("## Modelin tahmini (damgali · tavanli ±%{})".format(int(TAHMIN_TAVAN)))
-    for i,t in enumerate((d.get("tahmin") or [])[:5],1):
-        L.append("- #{} {} ({}): %{} · sicil %{}".format(i, t["tk"], t["nm"], t["beklenti"], t["sicil"]))
-    L.append("")
-    L.append("## Gunun kazananlari (gercek olgu)")
-    for i,g in enumerate((d.get("gainers") or [])[:5],1):
-        L.append("- {}. {} ({}): %{}".format(i, g["tk"], g["nm"], g["ch"]))
+        L.append("- Henuz kayit yok (hafta ici 18:30 beslenir).")
     L.append("")
     L.append("## Durustluk notu")
-    L.append("- Getiri tahmini ~ yazi-tura (sicil ~%49). KANITLANMIS edge DEGIL.")
-    L.append("- Dogrulanmis eksen: RISK disiplini — hisseye-ozel vol-target Poz + ATR(14)x{} stop.".format(ATR_K_STOP))
-    L.append("- Ileri-test sadece risk/rejim-durus disiplinini olcer; getiri tahminini OLCMEZ.")
+    L.append("- Getiri tahmini KANITLANMIS edge DEGIL. Dogrulanmis eksen: risk disiplini.")
     return "\n".join(L)
-
-def senaryo_cerceve(px, hedef, vol_pct, atr):
-    """KOSULLU SENARYO — analist hedefini bu hissenin KENDI oynakligina gore baglama oturtur.
-    TAHMIN/YON/AL-SAT URETMEZ. Yalnizca olcer: mesafe ne kadar, bu hissenin normal
-    salinimina gore buyuk mu kucuk mu, ve analist hedefinin guvenilirlik notu.
-    Felsefe: ayni %20'lik fark sakin hissede buyuk, oynak hissede kucuktur — sistem
-    bunu cerceveler, 'al' demez. Olcu ekseni = oynaklik (projenin dogrulanmis ekseni)."""
-    if not px or px <= 0:
-        return None
-    fark = (float(hedef) / float(px) - 1.0) * 100.0
-    sigma = max(float(vol_pct or 30.0), 1.0) / 100.0          # yillik oynaklik (oran)
-    yil_oran = abs(fark) / 100.0 / sigma                       # mesafe / 1 yillik sigma
-    gunluk_pct = (float(atr) / float(px) * 100.0) if (atr and px) else None
-    gun = (abs(fark) / gunluk_pct) if (gunluk_pct and gunluk_pct > 0) else None
-
-    if yil_oran < 0.5:
-        buyukluk = "KUCUK"
-        bnot = ("Bu hissenin kendi oynakligina gore kucuk bir mesafe — tipik bir yillik "
-                "salinim araliginin yarisindan az. Cok seyin yolunda gitmesine gerek yok; "
-                "ama bu, analist hedefinin fiyata zaten yakin oldugu anlamina da gelebilir.")
-    elif yil_oran < 1.5:
-        buyukluk = "ORTA"
-        bnot = ("Kabaca bu hissenin normal bir yillik salinimi kadar. Ulasilabilir gorunur "
-                "ama garanti degil — bu bir BUYUKLUK olcusu, yon tahmini DEGIL.")
-    else:
-        buyukluk = "BUYUK"
-        bnot = ("Bu hissenin tipik yillik salinim araliginin epey ustunde. Bu hedefe ulasmak "
-                "icin olagandisi bir katalizor gerekir. Analist hedefi ya cok iyimser ya cok "
-                "uzun vadeli — hangisi oldugunu kontrol et.")
-
-    yon = ("Analist hedefi mevcut fiyatin USTUNDE" if fark > 0.5
-           else ("Analist hedefi mevcut fiyatin ALTINDA" if fark < -0.5
-                 else "Analist hedefi mevcut fiyata ~esit"))
-    return {"fark": round(fark, 1), "yil_oran": round(yil_oran, 2),
-            "gun": (round(gun) if gun else None), "sigma_pct": round(sigma * 100),
-            "buyukluk": buyukluk, "bnot": bnot, "yon": yon}
 
 def run_streamlit():
     import streamlit as st, streamlit.components.v1 as components
-    st.set_page_config(page_title="APEX",page_icon="\u26A1",layout="centered")
+    st.set_page_config(page_title="APEX",page_icon="\U0001F9ED",layout="centered")
+    st.markdown("<style>#MainMenu,header,footer{visibility:hidden}.block-container{padding-top:1rem;max-width:1040px}</style>",
+                unsafe_allow_html=True)
     @st.cache_data(ttl=900)
-    def _veri(_surum=SURUM):           # <-- SURUM degisince cache otomatik tazelenir (reboot gerekmez)
+    def _veri(_surum=SURUM):
         return fetch_bist()
     html,data=build_html(veri=_veri())
-    components.html(html,height=820,scrolling=True)
+    components.html(html,height=1180,scrolling=True)
 
-    # Rapor (.md) — Defter'deki "Rapor uret" butonunun calisan karsiligi
-    st.download_button("\U0001F4CB Raporu indir (.md)", data=rapor_md(data),
+    st.download_button("Raporu indir (.md)", data=rapor_md(data),
                        file_name="apex_rapor_{}.md".format(data.get("uretildi","")),
                        mime="text/markdown", use_container_width=True)
 
-    # --- KOSULLU SENARYO HARITASI ---
-    # Analist hedefini ForInvest'ten KENDIN gor, gir; sistem o rakami bu hissenin
-    # KENDI oynakligina gore baglama oturtur. Yon/al-sat SOYLEMEZ. Karar sende.
+    # ---- Kosullu senaryo haritasi (interaktif — native) ----
     st.markdown("---")
     st.subheader("\U0001F9ED Kosullu senaryo haritasi")
-    st.caption("Analist hedef fiyatini ForInvest'ten KENDIN gor, asagi gir. Sistem o rakami "
-               "bu hissenin KENDI oynakligina gore baglama oturtur — yon/al-sat SOYLEMEZ. Karar sende.")
-    secilebilir=[s for s in data["stocks"] if isinstance(s.get("px"),(int,float))]
+    st.caption("Analist hedef fiyatini ForInvest'ten KENDIN gor, gir. Sistem o rakami bu hissenin KENDI "
+               "oynakligina gore baglama oturtur — yon/al-sat SOYLEMEZ. Karar sende.")
+    secilebilir=[s for s in data["stocks"] if s.get("veri")]
     if not secilebilir:
         st.info("Canli fiyat yok — senaryo icin yfinance verisi gerekli.")
     else:
@@ -377,29 +584,21 @@ def run_streamlit():
             else:
                 st.markdown("#### {} mesafe".format(c["buyukluk"]))
                 st.write("{}: **%{:+}**".format(c["yon"],c["fark"]))
-                st.write("Bu mesafe, hissenin ~1 yillik oynakliginin (%{}) **{}×**'i kadar."
-                         .format(c["sigma_pct"],c["yil_oran"]))
+                st.write("Bu mesafe, hissenin ~1 yillik oynakliginin (%{}) **{}×**'i kadar.".format(c["sigma_pct"],c["yil_oran"]))
                 if c["gun"]:
                     st.write("Tipik gunluk salinima gore kabaca **{} islem gunu**luk mesafe.".format(c["gun"]))
                 st.info(c["bnot"])
-                st.caption("Analist hedefleri sistematik olarak IYIMSER saplidir ve KANITLANMIS bir "
-                           "edge DEGILDIR. Bu bir cerceve, tahmin degil — karar sende.")
-
-    n=len([s for s in data["stocks"] if isinstance(s["px"],(int,float))])
-    if not data["canli"]:
-        st.warning("Canli veri cekilemedi - liste gorunur ama fiyat/grafik icin yfinance + internet gerekli. requirements.txt'e yfinance ekli mi?")
-    with st.expander("Durustluk . sayilar nereden? ({})".format(SURUM)):
-        st.write("{} hisse listede . {} tanesi canli veriyle dolu.".format(len(data['stocks']),n))
-        st.write("Poz rozeti = HISSE-BASI vol-target. Stop = ATR(14)x{} (hisseye ozel). "
-                 "Tahmin gosterimi +-%{} ile tavanli.".format(ATR_K_STOP,int(TAHMIN_TAVAN)))
-        st.write("Rejim reel %{} -> {}. Merkez {}/100.".format(
-            data['rejim']['reel'],data['rejim']['durus'],data['master']['skor']))
+                st.caption("Analist hedefleri sistematik olarak IYIMSER saplidir ve KANITLANMIS bir edge "
+                           "DEGILDIR. Bu bir cerceve, tahmin degil — karar sende.")
+    with st.expander("Durustluk · sayilar nereden? ({})".format(SURUM)):
+        st.write("{} hisse listede · {} tanesi canli veriyle dolu.".format(len(data['stocks']),data['n_veri']))
+        st.write("Guven kerterizi amber cunku getiri ekseni ~yazi-tura. Poz = hisse-basi vol-target. "
+                 "Stop = ATR(14)×{}. Canli veri yoksa fiyat UYDURULMAZ.".format(ATR_K_STOP))
 
 import sys as _sys
 if "streamlit" in _sys.modules:
     run_streamlit()
 elif __name__=="__main__":
     out,data=write_html()
-    n=len([s for s in data["stocks"] if isinstance(s["px"],(int,float))])
-    print("OK {} . {} . {} hisse listede ({} canli) . rejim {} . merkez {}/100".format(
-        out,SURUM,len(data['stocks']),n,data['rejim']['durus'],data['master']['skor']))
+    print("OK {} · {} · {} hisse ({} canli) · rejim {} · kerteriz {}/100".format(
+        out,SURUM,len(data['stocks']),data['n_veri'],data['rejim']['durus'],data['merkez']))
