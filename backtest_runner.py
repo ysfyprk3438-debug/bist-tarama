@@ -49,22 +49,20 @@ def calistir():
         print("makro veri yok (tablo güncel mi?)"); return
 
     rows = _oku()
-    onceki = rows[-1]["durus"] if rows else None
-    bugun_durus = duruş(m["reel"], onceki)
+    by_date = {r["tarih"]: r for r in rows}            # tarihe göre tekille (mükerrer çöker)
     tarih_str = veri_tarih.isoformat()
+    onceki_satirlar = sorted([r for r in by_date.values() if r["tarih"] < tarih_str],
+                             key=lambda r: r["tarih"])
+    onceki = onceki_satirlar[-1]["durus"] if onceki_satirlar else None
+    bugun_durus = duruş(m["reel"], onceki)
     pos = pz.oneri(xu_df["Close"].values, bugun_durus)   # risk-ölçekli ağırlık (kaydedilir)
     w_str = f"{pos['w']:.3f}"
 
-    if rows and rows[-1]["tarih"] == tarih_str:
-        rows[-1] = {"tarih": tarih_str, "xu100": f"{xu_son:.2f}", "politika": f"{m['politika']:.1f}",
-                    "enflasyon": f"{m['enflasyon']:.1f}", "reel": f"{m['reel']:+.1f}", "durus": bugun_durus,
-                    "agirlik": w_str}
-        yeni = False
-    else:
-        rows.append({"tarih": tarih_str, "xu100": f"{xu_son:.2f}", "politika": f"{m['politika']:.1f}",
-                     "enflasyon": f"{m['enflasyon']:.1f}", "reel": f"{m['reel']:+.1f}", "durus": bugun_durus,
-                     "agirlik": w_str})
-        yeni = True
+    yeni = tarih_str not in by_date
+    by_date[tarih_str] = {"tarih": tarih_str, "xu100": f"{xu_son:.2f}", "politika": f"{m['politika']:.1f}",
+                          "enflasyon": f"{m['enflasyon']:.1f}", "reel": f"{m['reel']:+.1f}",
+                          "durus": bugun_durus, "agirlik": w_str}
+    rows = [by_date[d] for d in sorted(by_date)]         # her zaman tarih sıralı
     _yaz(rows)
 
     def _w(r):  # eski kayıtlarda agirlik yoksa ikili duruştan türet (geriye uyum)
