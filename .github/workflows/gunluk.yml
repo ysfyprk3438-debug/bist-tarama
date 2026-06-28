@@ -1,0 +1,40 @@
+name: ileri-test gunluk log
+
+# Her IS GUNU BIST kapanisindan sonra calisir + elle tetiklenebilir
+on:
+  schedule:
+    - cron: "30 15 * * 1-5"   # 15:30 UTC = 18:30 TR (Pzt-Cum). BIST 18:00'de kapanir.
+  workflow_dispatch: {}         # Actions sekmesinden elle "Run workflow"
+
+permissions:
+  contents: write               # CSV'yi repoya geri yazabilmek icin
+
+jobs:
+  log:
+    runs-on: ubuntu-latest
+    steps:
+      - name: repoyu al
+        uses: actions/checkout@v4
+
+      - name: python kur
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: bagimliliklar
+        run: pip install --quiet numpy yfinance
+
+      - name: gunluk kaydi ekle
+        run: python gunluk_log.py
+
+      - name: CSV'yi commit et
+        run: |
+          git config user.name "apex-bot"
+          git config user.email "apex-bot@users.noreply.github.com"
+          git add ileri_gunluk.csv
+          if git diff --staged --quiet; then
+            echo "degisiklik yok, commit atlandi"
+          else
+            git commit -m "ileri-test $(date -u +%F)"
+            git push
+          fi
