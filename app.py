@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-APEX — v2.7 · KURUMSAL ARAYUZ (self-contained) · GERCEK VERI · DURUST CERCEVE
+APEX — v2.9 · KURUMSAL ARAYUZ (self-contained) · GERCEK VERI · DURUST CERCEVE
 Tasarim tezi: "olcum aleti" — kalibre edilmis supheyi on plana koyan bir
 navigasyon/olcu cihazi. Pusula metaforu. Amber = guven (supheli), teal =
 dogrulanmis eksen (risk disiplini), pas-kirmizi = olgusal negatif.
@@ -25,13 +25,20 @@ hash(sym) tabanli "gecmis isabet %49/%53" UYDURMAYDI — silindi, durust "—".
 (3) Havuz bu skora gore siralanir (en kirilgan ustte) + sort secenekleri.
    Felsefe: "en iyi alim" listesi DEGIL — tersinden "once alinmayacaklar".
 
+v2.8 -> v2.9: 2 yaniltici-sayi hatasi duzeltildi. (1) Kesisim "MA50 MA200'un
+%X altinda" mevcut fiyata bolunuyordu -> coken hissede %204 gibi sacma cikiyordu;
+artik MA200'e bolunur (sinirli, dogru). (2) R/Odul: coken/dusus-trendi hissede
+teknik hedef (60-gun direnci) eski zirve olunca 13x gibi abartili cikiyordu ->
+hedef cok uzaksa (vol bazinda BUYUK) R/Odul ⚠ ile isaretlenir + "yaniltici,
+gercekci hedef degil" notu. Boylece "KACIN" yaninda sahte "buyuk odul" gozukmez.
+
 requirements.txt:  streamlit  yfinance  numpy
 """
 import json, datetime, math, pathlib
 import numpy as np
 
 OUT = "apex.html"
-SURUM = "v2.8"
+SURUM = "v2.9"
 TAHMIN_TAVAN = 40.0
 ATR_K_STOP = 2.0
 ATR_K_HEDEF = 3.0
@@ -133,7 +140,7 @@ def kesisim_analiz(close, disp_n=None):
         elif diff[i-1]>=0 and diff[i]<0: crosses.append((i,"olum"))
     son=crosses[-1] if crosses else None
     gun_once=(n-1-son[0]) if son else None
-    gap_pct=round(float(diff[-1]/c[-1]*100),1) if c[-1] else 0.0
+    gap_pct=round(float(diff[-1]/m200[-1]*100),1) if m200[-1] else 0.0
     look=min(10,n-start-2); look=max(look,1)
     daralma=abs(diff[-1])-abs(diff[-1-look])
     gap_yon="daraliyor" if daralma<0 else "aciliyor"
@@ -466,11 +473,14 @@ def build_app_data(bugun=None, veri=None):
                 "risk_dusus":d.get("risk_dusus"),"cone":d.get("cone"),"tuzak":d.get("tuzak"),"veri":True})
             rsk=risk_skoru(d.get("risk_dusus"),d.get("tuzak"),d.get("rsi"),d.get("vol"))
             base.update({"risk_skor":rsk["skor"],"risk_kat":rsk["kat"],"risk_renk":rsk["renk"],"risk_surucu":rsk["surucu"]})
+            _sen=senaryo_cerceve(px,hedef,(svol*100.0),atr)
+            base["rr_uzak"]=bool(_sen and _sen["yil_oran"]>=1.5)
         else:
             base.update({"px":"-","ch":0,"hist":[],"ma50":[],"ma200":[],"rsi":"-","destek":"-","direnc":"-",
                 "hedef":"-","stop":"-","atr":"-","rr":"-","ay3":"-","vol":"-","poz":"-","kesisim":None,
                 "risk_dusus":None,"cone":None,"tuzak":None,"veri":False})
             base.update({"risk_skor":"-","risk_kat":"-","risk_renk":"","risk_surucu":[]})
+            base["rr_uzak"]=False
         stocks.append(base)
     verili=[s for s in stocks if s.get("veri")]
     gainers=sorted(verili,key=lambda s:s["ch"],reverse=True)[:6]
@@ -621,7 +631,7 @@ body{background:var(--ink);color:var(--bone);font-family:var(--body);line-height
 
 <div id="view-detail" class="hidden"></div>
 
-<div class="disc" id="disc">APEX v2.8 · yatirim tavsiyesi degildir · getiri tahmini ~ yazi-tura, kanitlanmis edge degil</div>
+<div class="disc" id="disc">APEX v2.9 · yatirim tavsiyesi degildir · getiri tahmini ~ yazi-tura, kanitlanmis edge degil</div>
 </div>
 
 <script>
@@ -907,12 +917,13 @@ function renderDetail(i){
     ogretmenKutu(s)+
     '<div class="dgrid">'+
     cell('Yillik vol',s.vol==='-'?'—':'%'+s.vol)+cell('RSI(14)',s.rsi==='-'?'—':s.rsi)+
-    cell('3-ay',s.ay3==='-'?'—':'%'+sgn(s.ay3))+cell('R/Odul',s.rr==='-'?'—':s.rr+'×')+
+    cell('3-ay',s.ay3==='-'?'—':'%'+sgn(s.ay3))+cell('R/Odul',s.rr==='-'?'—':(s.rr+'×'+(s.rr_uzak?' \u26A0':'')))+
     cell('Destek',s.destek==='-'?'—':s.destek)+cell('Direnc',s.direnc==='-'?'—':s.direnc)+
     cell('ATR stop',s.stop==='-'?'—':s.stop)+cell('Teknik hedef',s.hedef==='-'?'—':s.hedef)+
     '</div>'+
     '<div class="stamp">Stop = ATR(14)×'+'2'+' (hisseye ozel, fiyata duyarli). Hedef = 60-gun direnci. '+
-    'Bunlar risk cercevesidir — al-sat emri DEGIL.</div>';
+    'Bunlar risk cercevesidir — al-sat emri DEGIL.</div>'+
+    (s.rr_uzak?'<div class="stamp" style="border-left-color:var(--rust)">\u26A0 <b>R/Odul yaniltici:</b> teknik hedef (60-gun direnci \u20BA'+s.hedef+') fiyatin cok ustunde. Dusus trendindeki bir hissede bu "eski zirveye donus" demektir — R/Odul abartili gorunur, olagandisi toparlanma gerektirir. Yakin/gercekci bir hedef DEGIL; "buyuk odul" diye okuma.</div>':'');
   var baglam='<div class="stub">Sektor rotasyonu, buyuk-oyuncu akisi (OBV) ve niyet okumasi bu sekmeye gelecek. '+
     'Henuz baglanmadi — sahte gosterge koymuyoruz; veri gelince dolar.</div>';
   var sicilT='<div class="dgrid">'+cell('Bu hissede gecmis isabet','—')+
