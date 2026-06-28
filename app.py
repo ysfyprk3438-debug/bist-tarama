@@ -19,7 +19,7 @@ import numpy as np
 
 TEMPLATE = "apex_omurga_v1.html"
 OUT = "apex.html"
-SURUM = "v1.3"                 # <-- her deploy'da artir: v1.4, v1.5 ... (cache tazelenir)
+SURUM = "v1.4"                 # <-- her deploy'da artir: v1.5, v1.6 ... (cache tazelenir)
 TAHMIN_TAVAN = 40.0           # tahmin gosterim tavani (+-%)
 ATR_K_STOP = 2.0             # stop = fiyat - K * ATR
 ATR_K_HEDEF = 3.0            # kirilim varsa hedef = fiyat + K * ATR
@@ -204,6 +204,33 @@ def run_streamlit():
         return fetch_bist()
     html,data=build_html(veri=_veri())
     components.html(html,height=820,scrolling=True)
+
+    # --- ILERI-TEST PANELI (otomatik: ileri_gunluk.csv'den, GitHub Actions her gun besler) ---
+    st.markdown("### \U0001F4C8 Ileri-test . canli birikim")
+    st.caption("Sistemin REJIM-DURUS disiplini vs duz endeks vs mevduat. Getiri tahmini (yazi-tura) burada DEGIL.")
+    try:
+        import pandas as pd
+        if pathlib.Path("ileri_gunluk.csv").exists():
+            g=pd.read_csv("ileri_gunluk.csv").dropna(subset=["tarih"])
+            if len(g)>=1:
+                e=m=s=100.0; E=[]; M=[]; S=[]
+                for _,r in g.iterrows():
+                    eg=r.get("endeks_gun%"); mg=r.get("mevduat_gun%"); sg=r.get("stance_gun%")
+                    if pd.notna(eg): e*=(1+float(eg)/100)
+                    if pd.notna(mg): m*=(1+float(mg)/100)
+                    if pd.notna(sg): s*=(1+float(sg)/100)
+                    E.append(round(e,2)); M.append(round(m,2)); S.append(round(s,2))
+                cg=pd.DataFrame({"Sistem (stance)":S,"Endeks":E,"Mevduat":M},index=list(g["tarih"]))
+                st.line_chart(cg,height=240)
+                st.caption("N={} gun . baslangic=100 . Sistem {} . Endeks {} . Mevduat {}".format(len(g),S[-1],E[-1],M[-1]))
+                st.caption("Durust okuma: Sistem mevduati VE endeksi yendi mi? Tek-iki gun anlamsiz; N buyudukce sicil olusur.")
+            else:
+                st.info("Henuz veri yok.")
+        else:
+            st.info("ileri_gunluk.csv yok - GitHub Actions ilk calismada olusturur (her is gunu 18:30 TR).")
+    except Exception as _ex:
+        st.caption("Ileri-test paneli okunamadi: {}".format(_ex))
+
     n=len([s for s in data["stocks"] if isinstance(s["px"],(int,float))])
     if not data["canli"]:
         st.warning("Canli veri cekilemedi - liste gorunur ama fiyat/grafik icin yfinance + internet gerekli. requirements.txt'e yfinance ekli mi?")
