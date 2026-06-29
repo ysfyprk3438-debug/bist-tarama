@@ -38,7 +38,7 @@ import json, datetime, math, pathlib
 import numpy as np
 
 OUT = "apex.html"
-SURUM = "v3.3"
+SURUM = "v3.4"
 TAHMIN_TAVAN = 40.0
 ATR_K_STOP = 2.0
 ATR_K_HEDEF = 3.0
@@ -615,7 +615,7 @@ def _kalib_sinyaller(s):
         pass
     ks = s.get("kesisim")
     if isinstance(ks, dict):
-        t = (ks.get("tip") or "").lower()
+        t = (ks.get("son_tip") or "").lower()
         if "golden" in t or "altin" in t: out.append(("ma_kesisim", 1))
         elif "death" in t or "olum" in t: out.append(("ma_kesisim", -1))
     return out
@@ -668,7 +668,8 @@ def kalibrasyon_sonuclandir(bugun, fiyatlar):
         if (r.get("isabet") or "") != "": continue
         try: kt = _dt.date.fromisoformat(r["tarih"]); uf = int(r["ufuk"])
         except Exception: continue
-        if (bug - kt).days < uf: continue
+        # ISLEM GUNU say (takvim gunu DEGIL) — Cuma/Pzt sinyalleri ayni ufku gorsun
+        if int(np.busday_count(kt, bug)) < uf: continue
         px = fiyatlar.get(r["hisse"])
         if px in (None, "-", ""): continue
         try: giris = float(r["giris"]); cikis = float(px); yon = int(r["yon"])
