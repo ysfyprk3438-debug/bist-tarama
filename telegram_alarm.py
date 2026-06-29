@@ -76,18 +76,29 @@ def metrikler(df, vade):
 
 
 def _hisse_satiri(kod, m):
+    """Düz dil, BETİMLEYİCİ. 'Ne olacağı' değil, 'şu an ne durumda' anlatır."""
     if m is None:
-        return f"*{kod}* —  _veri yok_"
-    p = f"{m['son']:.2f}₺"
-    g = f"gün {m['gun_pct']:+.1f}%"
-    if m["vwap_pct"] is None:
-        v = "VWAP —"
-    else:
-        yon = "üstü" if m["vwap_pct"] >= 0 else "altı"
-        v = f"VWAP {yon} %{abs(m['vwap_pct']):.1f}"
-    vol = f"vol: {m['vol']}"
-    s = "ATR-stop —" if m["stop_pct"] is None else f"ATR-stop −%{m['stop_pct']:.1f}"
-    return f"*{kod}* {p} · {g} · {v} · {vol} · {s}"
+        return f"*{kod}* — _veri yok_"
+
+    # 1. satır: fiyat + bugünkü değişim (olgu)
+    bas = f"*{kod}* {m['son']:.2f}₺ · bugün %{m['gun_pct']:+.1f}"
+
+    parcalar = []
+    # Ortalamaya göre konum (kimin baskın olduğunun izi — gelecek değil)
+    if m["vwap_pct"] is not None:
+        if m["vwap_pct"] >= 0:
+            parcalar.append(f"fiyat son 20 günün ortalamasının %{abs(m['vwap_pct']):.1f} ÜSTÜNDE")
+        else:
+            parcalar.append(f"fiyat son 20 günün ortalamasının %{abs(m['vwap_pct']):.1f} ALTINDA")
+    # Oynaklık (kendi geçmişine göre)
+    vol_soz = {"sakin": "sakin seyir", "normal": "normal oynaklık",
+               "fırtına": "sert oynaklık"}.get(m["vol"], "oynaklık: —")
+    parcalar.append(vol_soz)
+    # Risk-stop (pozisyon alınırsa boyutlandırma — tahmin değil)
+    if m["stop_pct"] is not None:
+        parcalar.append(f"alırsan mantıklı stop ~−%{m['stop_pct']:.1f}")
+
+    return bas + "\n   " + " · ".join(parcalar)
 
 
 # ── PORTFÖY RİSK (opsiyonel, betimleyici) ──────────────────────────
@@ -143,7 +154,11 @@ def mesaj_kur():
         satirlar.append(_hisse_satiri(kod, metrikler(df, vade)))
 
     satirlar.append("")
-    satirlar.append("_Sinyal yok · hedef/getiri yok · güven skoru yok._")
+    satirlar.append("_Okuma: «ortalamanın üstünde/altında» = fiyatın son 20 günün "
+                    "hacim-ağırlıklı ortalamasına göre yeri (kimin baskın olduğu, "
+                    "gelecek DEĞİL). «stop» = pozisyon alırsan oynaklığa göre risk "
+                    "mesafesi — tahmin değil, risk ölçüsü._")
+    satirlar.append("_Sinyal yok · hedef/getiri yok · «şu olur / beklenir» yok._")
     satirlar.append("_Sadece şu an ne olduğu. Karar senin. Yatırım tavsiyesi değildir._")
     return "\n".join(satirlar)
 
