@@ -38,7 +38,7 @@ import json, datetime, math, pathlib
 import numpy as np
 
 OUT = "apex.html"
-SURUM = "v3.5"
+SURUM = "v3.6"
 TAHMIN_TAVAN = 40.0
 ATR_K_STOP = 2.0
 ATR_K_HEDEF = 3.0
@@ -552,6 +552,81 @@ def broker_gecmis(hisse, gun=60):
             "ilk_tarih": min(son_tarihler) if son_tarihler else None,
             "son_tarih": max(son_tarihler) if son_tarihler else None,
             "brokerlar": brokerlar[:10]}
+
+
+# ══════════════════════════════════════════════════════════════
+# TEMEL / KUNYE — ForInvest stockScreener betimleyici temel veri (v3.6)
+# ══════════════════════════════════════════════════════════════
+# SADECE BETIMLEME: "su an sirket ne durumda" — F/K, PD/DD, temettu verimi,
+# halka aciklik, sahiplik dagilimi. Hicbiri 'al/sat' DEGIL, 'ucuz/pahali' YARGISI
+# DEGIL. Sayilar gercek (ForInvest); yorum kullanicinin. yfinance BIST temelini
+# guvenilir vermez; bu dosya o boslugu doldurur. UYDURMA YOK: dosya yoksa "—".
+# Boru hatti: Desktop Claude stockScreener ceker -> temel_veri.json -> repoya commit.
+TEMEL_DOSYA = "temel_veri.json"
+_TEMEL_CACHE = {"yuklendi": False, "veri": {}}
+
+def temel_oku():
+    """temel_veri.json'u bir kez okur (cache'ler). Yoksa/bozuksa bos dict.
+    UYDURMA YOK: dosya yoksa Kunye paneli sessizce '—' kalir."""
+    if _TEMEL_CACHE["yuklendi"]:
+        return _TEMEL_CACHE["veri"]
+    veri = {}
+    try:
+        p = pathlib.Path(TEMEL_DOSYA)
+        if p.exists():
+            ham = json.loads(p.read_text(encoding="utf-8"))
+            if isinstance(ham, dict) and isinstance(ham.get("hisseler"), dict):
+                veri = ham
+    except Exception:
+        veri = {}
+    _TEMEL_CACHE["yuklendi"] = True; _TEMEL_CACHE["veri"] = veri
+    return veri
+
+def temel_hisse(sym):
+    """Tek hissenin temel/kunye dict'i veya None."""
+    v = temel_oku()
+    if not v:
+        return None
+    return (v.get("hisseler") or {}).get(sym)
+
+def temel_betimle(t):
+    """Kunye dict'inden UI icin betimleyici satirlar uretir (etiket, deger_str).
+    YARGI YOK — sadece bicimlenmis gercekler. F/K=0/None -> '—' (negatif/yok kar)."""
+    if not t:
+        return []
+    def _yuzde(x, ond=1):
+        try: return ("%{:." + str(ond) + "f}").format(float(x))
+        except Exception: return "—"
+    def _kat(x, ek="x", ond=2):
+        try:
+            f = float(x)
+            if f <= 0: return "—"
+            return ("{:." + str(ond) + "f}" + ek).format(f)
+        except Exception: return "—"
+    def _ozkar(x):
+        try: return "%{:.1f}".format(float(x) * 100)
+        except Exception: return "—"
+    def _pd(x):
+        try:
+            f = float(x); a = abs(f)
+            if a >= 1e12: return "{:.2f} tln\u20BA".format(f/1e12)
+            if a >= 1e9:  return "{:.1f} mlr\u20BA".format(f/1e9)
+            if a >= 1e6:  return "{:.0f} mln\u20BA".format(f/1e6)
+            return "{:.0f}\u20BA".format(f)
+        except Exception: return "—"
+    bireysel = t.get("bireysel"); kurumsal = t.get("kurumsal")
+    sahiplik = "—"
+    if bireysel is not None and kurumsal is not None:
+        sahiplik = "bireysel {} · kurumsal {}".format(_yuzde(bireysel), _yuzde(kurumsal))
+    return [
+        ("F/K (fiyat/kazanc)",        _kat(t.get("fk"))),
+        ("PD/DD (fiyat/defter)",      _kat(t.get("pddd"))),
+        ("Temettu verimi",            _yuzde(t.get("temettu"), 2) if t.get("temettu") is not None else "—"),
+        ("Ozsermaye karliligi (ROE)", _ozkar(t.get("ozkar"))),
+        ("Halka aciklik",             _yuzde(t.get("halka_acik"))),
+        ("Sahiplik",                  sahiplik),
+        ("Piyasa degeri",             _pd(t.get("pd"))),
+    ]
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1523,6 +1598,28 @@ def run_streamlit():
                                 unsafe_allow_html=True)
                 st.caption("Surekli net alici/satici olmak bir KALIP'tir \u2014 ama bu kalibin yarin sureceginin "
                            "garantisi YOK. Baskalari da ayni veriyi gorur. Gozlem, edge degil.")
+
+        # ── KUNYE / TEMEL (betimleyici) — ForInvest stockScreener, yargi YOK ──
+        with st.expander("\U0001FAAA Kunye / Temel betimleme — 'sirket su an ne durumda', yargi DEGIL", expanded=False):
+            t_sec = temel_hisse(sec["tk"])
+            if not t_sec:
+                st.caption("Bu hisse icin temel veri yok (temel_veri.json). ForInvest stockScreener'dan "
+                           "Desktop'ta cekilip repoya konunca dolar. UYDURMA YOK \u2014 veri gelene kadar '—'.")
+            else:
+                tv = temel_oku()
+                st.caption("Kaynak: {k} \u00b7 {t}. Asagidakiler GERCEK gozlemsel temeller \u2014 "
+                           "'ucuz/pahali' YARGISI veya 'al/sat' DEGIL. Yorum sende.".format(
+                               k=tv.get("kaynak", "ForInvest"), t=tv.get("tarih", "—")))
+                satirlar = temel_betimle(t_sec)
+                h = "<table style='width:100%;border-collapse:collapse;font-size:13px'>"
+                for etiket, deger in satirlar:
+                    h += ("<tr><td style='padding:3px 0;color:#9AA4A0'>{e}</td>"
+                          "<td style='text-align:right;font-family:monospace;color:#E8E4D8'>{d}</td></tr>").format(
+                              e=etiket, d=deger)
+                h += "</table>"
+                st.markdown(h, unsafe_allow_html=True)
+                st.caption("F/K veya PD/DD '—' ise: negatif/yok kar ya da veri eksik. Bu sayilar "
+                           "tek baslarina yon SOYLEMEZ \u2014 baglamla (sektor, rejim, risk) birlikte okunur.")
 
         # ── TUZAK KONTROLU (10/10) — ters matematik: once "neden ALMAMALIYIM?" ──
         with st.expander("\U0001F3AF Tuzak kontrolu (10/10) — once 'neden ALMAMALIYIM?'", expanded=False):
