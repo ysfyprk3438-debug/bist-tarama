@@ -32,6 +32,9 @@ jobs:
       - name: broker arsivi (akd_takas.json -> arsiv)
         run: python app.py akd-arsiv || echo "akd-arsiv calismadi, devam"
 
+      - name: karar gunlugu (vadesi dolanlari kapat)
+        run: python app.py karar || echo "karar calismadi, devam"
+
       - name: degisiklikleri commit et
         run: |
           git config user.name "apex-bot"
@@ -40,7 +43,7 @@ jobs:
           if git diff --staged --quiet; then
             echo "degisiklik yok, commit atlandi"
           else
-            git commit -m "ileri-test + kalib + akd $(date -u +%F)"
+            git commit -m "ileri-test + kalib + akd + karar $(date -u +%F)"
             git pull --rebase origin main || true
             git push
           fi
