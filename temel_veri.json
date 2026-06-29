@@ -1,6 +1,6 @@
 {
  "tarih": "2026-06-29",
- "kaynak": "ForInvest stockScreener (XU100)",
+ "kaynak": "ForInvest stockScreener (XU100 + APEX ek)",
  "hisseler": {
   "TCELL": {
    "fk": 12.19,
@@ -1058,6 +1058,71 @@
    "pd": 28399450000,
    "temettu": 0.63,
    "net_marj": 0.0235083
+  },
+  "ISDMR": {
+   "fk": 25.47,
+   "pddd": 1.19,
+   "temettu": 7.09,
+   "halka_acik": 5.07,
+   "bireysel": 71.88,
+   "kurumsal": 28.12,
+   "ozkar": 0.0466,
+   "net_marj": 0.04745,
+   "pd": 167765000000
+  },
+  "SELEC": {
+   "fk": 118.56,
+   "pddd": 3.85,
+   "temettu": 0.49,
+   "halka_acik": 14.9,
+   "bireysel": 21.46,
+   "kurumsal": 78.54,
+   "ozkar": 0.0325,
+   "net_marj": 0.0296482,
+   "pd": 132645600000
+  },
+  "DEVA": {
+   "fk": 0,
+   "pddd": 0.49,
+   "temettu": 0.3,
+   "halka_acik": 17.72,
+   "bireysel": 14.76,
+   "kurumsal": 85.24,
+   "ozkar": -0.0348,
+   "net_marj": -0.0153737,
+   "pd": 14041354002.156
+  },
+  "SMRTG": {
+   "fk": 0,
+   "pddd": 4.32,
+   "halka_acik": 36.52,
+   "bireysel": 78.85,
+   "kurumsal": 21.15,
+   "ozkar": -0.0102,
+   "net_marj": 0.0247382,
+   "pd": 21866209200
+  },
+  "BERA": {
+   "fk": 0,
+   "pddd": 0.34,
+   "temettu": 0.33,
+   "halka_acik": 67.76,
+   "bireysel": 62.42,
+   "kurumsal": 37.58,
+   "ozkar": -0.0188,
+   "net_marj": 0.0153644,
+   "pd": 11102000000
+  },
+  "LOGO": {
+   "fk": 15.89,
+   "pddd": 3.2,
+   "temettu": 3.61,
+   "halka_acik": 64.48,
+   "bireysel": 25.11,
+   "kurumsal": 74.89,
+   "ozkar": 0.2015,
+   "net_marj": 0.086086,
+   "pd": 13138500000
   }
  }
 }
