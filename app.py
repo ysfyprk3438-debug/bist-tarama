@@ -38,7 +38,7 @@ import json, datetime, math, pathlib
 import numpy as np
 
 OUT = "apex.html"
-SURUM = "v3.7"
+SURUM = "v3.8"
 TAHMIN_TAVAN = 40.0
 ATR_K_STOP = 2.0
 ATR_K_HEDEF = 3.0
@@ -985,6 +985,116 @@ def kalibrasyon_ozet():
     t_et, t_ac = _etiket(tn, toplam_pct if toplam_pct is not None else 0)
     return {"sinyaller": sinyaller, "toplam_n": tn, "toplam_isabet": toplam_pct,
             "toplam_etiket": t_et, "toplam_aciklama": t_ac, "acik_kayit": acik, "placebo": 50}
+
+
+# ══════════════════════════════════════════════════════════════
+# KARAR GUNLUGU — kalibrasyonun kardesi (v3.8)
+# ══════════════════════════════════════════════════════════════
+# Kalibrasyon SISTEMIN sinyallerini denetler; bu SENIN kararlarini denetler.
+# Her karari (girdim/ekledim/almadim/sattim) + nedenini + o anki sistem durumunu
+# (rejim, risk, tuzak) kaydeder; ufuk sonunda fiyatla kapatir; isabeti placebo'ya
+# (%50) gore olcer. AMAC HAKLI CIKMAK DEGIL: (1) disiplinli kayit, (2) sistematik
+# olarak yazi-turanin ALTINDA secim yapip yapmadigini yakalamak (kovalama/asiri
+# guven = gercek, duzeltilebilir hata). ~%50 BEKLENEN sonuc, sorun degil.
+# Persistans: Streamlit repoya yazamaz -> UI satiri uretir, sen commit'lersin;
+# cron vade dolaninca otomatik kapatir. UYDURMA YOK.
+KARAR_DOSYA = "karar_defteri.csv"
+KARAR_UFUK = 20
+KARAR_BASLIK = ["tarih","hisse","karar","fiyat","poz_pct","rejim","risk","tuzak","ufuk",
+                "neden","sonuc_tarih","cikis","getiri_pct","isabet","not"]
+_KARAR_YON = {"girdim": 1, "ekledim": 1, "almadim": -1, "sattim": -1}
+
+def karar_satir_uret(bugun, hisse, karar, fiyat, rejim="", risk="", tuzak="",
+                     poz_pct="", neden="", ufuk=KARAR_UFUK, not_=""):
+    """Kullanicinin karar_defteri.csv'ye yapistiracagi TEK CSV satiri (string).
+    Sonuc alanlari bos baslar; cron vade dolunca doldurur. CSV-guvenli (alintilanir)."""
+    import csv as _csv, io as _io
+    bugun = bugun.isoformat() if hasattr(bugun, "isoformat") else str(bugun)
+    row = {"tarih": bugun, "hisse": hisse, "karar": karar, "fiyat": fiyat,
+           "poz_pct": poz_pct, "rejim": rejim, "risk": risk, "tuzak": tuzak,
+           "ufuk": ufuk, "neden": neden, "sonuc_tarih": "", "cikis": "",
+           "getiri_pct": "", "isabet": "", "not": not_}
+    buf = _io.StringIO()
+    _csv.DictWriter(buf, fieldnames=KARAR_BASLIK).writerow({k: row.get(k, "") for k in KARAR_BASLIK})
+    return buf.getvalue().strip()
+
+def karar_oku():
+    """karar_defteri.csv satirlari (liste) veya []. UYDURMA YOK."""
+    import csv as _csv
+    p = pathlib.Path(KARAR_DOSYA)
+    if not p.exists(): return []
+    try:
+        with open(p, encoding="utf-8") as f: return list(_csv.DictReader(f))
+    except Exception:
+        return []
+
+def karar_sonuclandir(bugun, fiyatlar):
+    """Vadesi dolmus ACIK kararlari guncel fiyatla kapatir. isabet:
+    girdim/ekledim -> fiyat ARTTIYSA dogru; almadim/sattim -> fiyat DUSTUYSE dogru.
+    ISLEM GUNU sayar (takvim degil). Kapatilan sayisini dondurur."""
+    import csv as _csv, datetime as _dt
+    p = pathlib.Path(KARAR_DOSYA)
+    if not p.exists(): return 0
+    bug = bugun if hasattr(bugun, "toordinal") else _dt.date.fromisoformat(str(bugun))
+    try:
+        with open(p, encoding="utf-8") as f: satirlar = list(_csv.DictReader(f))
+    except Exception:
+        return 0
+    kapatilan = 0
+    for r in satirlar:
+        if (r.get("isabet") or "") != "": continue
+        try: kt = _dt.date.fromisoformat(r["tarih"]); uf = int(r["ufuk"])
+        except Exception: continue
+        if int(np.busday_count(kt, bug)) < uf: continue
+        px = fiyatlar.get(r["hisse"])
+        if px in (None, "-", ""): continue
+        try: giris = float(r["fiyat"]); cikis = float(px)
+        except Exception: continue
+        if giris <= 0: continue
+        getiri = (cikis / giris - 1.0) * 100.0
+        yon = _KARAR_YON.get((r.get("karar") or "").lower(), 0)
+        gercek = 1 if getiri > 0 else (-1 if getiri < 0 else 0)
+        r["sonuc_tarih"] = bug.isoformat(); r["cikis"] = round(cikis, 2)
+        r["getiri_pct"] = round(getiri, 1)
+        r["isabet"] = 1 if (gercek != 0 and yon == gercek) else 0
+        kapatilan += 1
+    if kapatilan:
+        try:
+            with open(p, "w", encoding="utf-8", newline="") as f:
+                w = _csv.DictWriter(f, fieldnames=KARAR_BASLIK); w.writeheader()
+                for r in satirlar: w.writerow({k: r.get(k, "") for k in KARAR_BASLIK})
+        except Exception:
+            return 0
+    return kapatilan
+
+def karar_ozet():
+    """Karar-tipi bazli + TOPLAM isabet ozeti. Bos -> None (UYDURMA YOK)."""
+    rows = karar_oku()
+    if not rows: return None
+    grup = {}; acik = 0
+    for r in rows:
+        if (r.get("isabet") or "") == "": acik += 1; continue
+        try: h = int(r["isabet"])
+        except Exception: continue
+        g = grup.setdefault((r.get("karar") or "?").lower(), {"n": 0, "h": 0})
+        g["n"] += 1; g["h"] += h
+    def _etiket(n, pct):
+        if n < 30: return ("yetersiz", "Gurultu — guvenilir yargi icin >=30 kapali karar gerek.")
+        if pct < 42: return ("dikkat", "Yazi-turanin ALTINDA — sistematik ters secim olabilir "
+                              "(kovalama / asiri guven). Gercek ve duzeltilebilir bir uyari.")
+        if 42 <= pct <= 58: return ("placebo", "Yazi-tura — kararlarin YONU tutmuyor. BU BEKLENEN "
+                                    "(getiri tahmini ~yazi-tura). Deger: disiplin + risk, hakli cikmak DEGIL.")
+        return ("izlenmeli", "Placebo ustu AMA N ile oku — kucuk N'de sans olabilir, kanit degil.")
+    tipler = []; tn = th = 0
+    for ad, g in sorted(grup.items()):
+        pct = round(g["h"] / g["n"] * 100, 1) if g["n"] else 0.0
+        et, ac = _etiket(g["n"], pct)
+        tipler.append({"karar": ad, "n": g["n"], "isabet": pct, "etiket": et, "aciklama": ac})
+        tn += g["n"]; th += g["h"]
+    toplam_pct = round(th / tn * 100, 1) if tn else None
+    t_et, t_ac = _etiket(tn, toplam_pct if toplam_pct is not None else 0)
+    return {"tipler": tipler, "toplam_n": tn, "toplam_isabet": toplam_pct,
+            "toplam_etiket": t_et, "toplam_aciklama": t_ac, "acik_karar": acik, "placebo": 50}
 
 
 def senaryo_cerceve(px, hedef, vol_pct, atr):
@@ -1988,6 +2098,70 @@ def run_streamlit():
                         unsafe_allow_html=True)
         st.caption("Hatirla: yuzde ne derse ona uyariz. 'Placebo' diyen sinyale guvenmeyiz — fikir bizim olsa bile.")
 
+    st.markdown("---")
+    st.subheader("\U0001F9ED Karar Gunlugu — SENIN kararlarini denetler")
+    st.caption("Kalibrasyon sistemin sinyallerini olcer; bu seni olcer. Her gercek karari "
+               "(girdim/almadim/sattim) + nedenini kaydet \u2014 {} islem gunu sonra cron kapatir, "
+               "isabetini placebo'ya (%50) gore gosterir. AMAC HAKLI CIKMAK DEGIL: disiplinli kayit + "
+               "sistematik ters secim (kovalama/asiri guven) yakalamak. ~%50 BEKLENEN, sorun degil.".format(KARAR_UFUK))
+    _ksec = [s for s in data["stocks"] if s.get("veri")]
+    if _ksec:
+        _kad = {s["tk"]: s.get("ad", s["tk"]) for s in _ksec}
+        _ketik = ["{} — {}".format(s["tk"], _kad[s["tk"]]) for s in _ksec]
+        _kk = st.selectbox("Hangi hisse?", _ketik, key="kd_hisse")
+        _ks = _ksec[_ketik.index(_kk)]
+        _c1, _c2 = st.columns(2)
+        _karar = _c1.selectbox("Kararin", ["girdim", "ekledim", "almadim", "sattim"], key="kd_karar",
+                               help="girdim/ekledim = yukari bahis · almadim/sattim = kacindin (dususte hakli cikar)")
+        _ufuk = _c2.selectbox("Ufuk (islem gunu)", [10, 20, 60], index=1, key="kd_ufuk")
+        _neden = st.text_input("Neden? (kisa — katalizor / gerekce)", key="kd_neden",
+                               max_chars=120, placeholder="orn. bilanco beklentisi, destek bolgesi...")
+        _c3, _c4 = st.columns(2)
+        _poz = _c3.number_input("Pozisyon (sermayenin %'si, istege bagli)", min_value=0.0, max_value=100.0,
+                                value=0.0, step=1.0, key="kd_poz")
+        _not = _c4.text_input("Not (istege bagli)", key="kd_not", max_chars=80)
+        if st.button("Kayit satiri uret", key="kd_btn", use_container_width=True):
+            if not _neden.strip():
+                st.warning("Once kisa bir 'neden' yaz \u2014 karar gunlugunun butun degeri NEDEN'i kaydetmekte.")
+            else:
+                _tz = _ks.get("tuzak") or {}
+                _satir = karar_satir_uret(
+                    datetime.date.today(), _ks["tk"], _karar, _ks.get("px"),
+                    rejim=data["rejim"]["durus"], risk=_ks.get("risk_skor"),
+                    tuzak=(_tz.get("yanan") if isinstance(_tz, dict) else ""),
+                    poz_pct=(round(_poz, 1) if _poz > 0 else ""), neden=_neden.strip(),
+                    ufuk=_ufuk, not_=_not.strip())
+                st.success("Asagidaki satiri kopyala \u2192 GitHub'da **karar_defteri.csv**'nin SONUNA yeni satir olarak yapistir \u2192 Commit.")
+                st.code(_satir, language="text")
+                st.caption("Dosya henuz yoksa: once 'Add file \u2192 Create new file', ad **karar_defteri.csv**, "
+                           "ilk satira BASLIK'i koy:")
+                st.code(",".join(KARAR_BASLIK), language="text")
+                st.caption("Sonuc alanlari bos \u2014 cron {} islem gunu sonra otomatik doldurur. UYDURMA YOK.".format(_ufuk))
+    else:
+        st.caption("Canli veri gelince karar girisi acilir.")
+    _koz2 = karar_ozet()
+    if not _koz2:
+        st.info("Karar gunlugu henuz bos. Ilk kararini girip commit'leyince burada birikir; "
+                "{} islem gunu sonra ilk isabetler dolar. UYDURMA YOK \u2014 veri gelene kadar yargi yok.".format(KARAR_UFUK))
+    else:
+        _renk2 = {"yetersiz": "#9AA4A0", "placebo": "#E0A458", "dikkat": "#D2715A", "izlenmeli": "#4FB8A4"}
+        _tet2 = _koz2["toplam_etiket"]
+        _ti = ("%" + str(_koz2["toplam_isabet"])) if _koz2["toplam_isabet"] is not None else "—"
+        st.markdown("<div style='border-left:3px solid {c};padding:10px 14px;background:rgba(255,255,255,.02);"
+                    "border-radius:4px'><b style='color:{c}'>Kararlarin: {i} isabet · placebo %50 — {et}</b><br>"
+                    "<span style='color:#9AA4A0;font-size:12px'>{n} kapali karar · {a} acik · {ac}</span></div>".format(
+                        c=_renk2.get(_tet2, "#9AA4A0"), i=_ti, et=_tet2.upper(),
+                        n=_koz2["toplam_n"], a=_koz2["acik_karar"], ac=_koz2["toplam_aciklama"]),
+                    unsafe_allow_html=True)
+        for _tp in _koz2["tipler"]:
+            _c = _renk2.get(_tp["etiket"], "#9AA4A0")
+            st.markdown("<div style='font-size:13px;margin:4px 0'><b style='color:{c}'>{k}</b> "
+                        "&middot; isabet <b>%{i}</b> <span style='color:#9AA4A0'>(N={n} \u00b7 {et})</span></div>".format(
+                            c=_c, k=_tp["karar"], i=_tp["isabet"], n=_tp["n"], et=_tp["etiket"]),
+                        unsafe_allow_html=True)
+        st.caption("'dikkat' (%42 alti) cikarsa: sistematik ters secim sinyali \u2014 en degerli uyari budur. "
+                   "~%50 ise normal; getiri tahmini yazi-tura, deger disiplinde.")
+
     with st.expander("Durustluk · sayilar nereden? ({})".format(SURUM)):
         st.write("{} hisse listede · {} tanesi canli veriyle dolu.".format(len(data['stocks']),data['n_veri']))
         st.write("Guven kerterizi amber cunku getiri ekseni ~yazi-tura. Poz = hisse-basi vol-target. "
@@ -2019,6 +2193,17 @@ elif __name__=="__main__":
         toplam = len(akd_arsiv_oku())
         print("AKD-ARSIV {} · +{} yeni satir · arsivde toplam {} satir".format(
             SURUM, eklendi, toplam))
+    elif len(_sys.argv) > 1 and _sys.argv[1] == "karar":
+        # CRON GIRISI: vadesi dolmus kararlari guncel fiyatla kapat (isabet isaretle).
+        # Calistir:  python app.py karar   (ardindan git add -A && commit && push)
+        data = build_app_data()
+        bugun = datetime.date.today()
+        fiyatlar = {s["tk"]: s["px"] for s in data["stocks"] if s.get("veri")}
+        kapatildi = karar_sonuclandir(bugun, fiyatlar)
+        oz = karar_ozet() or {}
+        print("KARAR {} · {} kapatildi · acik={} · toplam N={} · isabet={}".format(
+            SURUM, kapatildi, oz.get("acik_karar", 0), oz.get("toplam_n", 0),
+            ("%" + str(oz.get("toplam_isabet")) if oz.get("toplam_isabet") is not None else "—")))
     else:
         out,data=write_html()
         print("OK {} · {} · {} hisse ({} canli) · rejim {} · kerteriz {}/100".format(
