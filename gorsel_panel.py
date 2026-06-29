@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# surum 2 - tile yenile
 """
 gorsel_panel.py — APEX gercek-veri gorsel ozet (koyu tema, SVG).
 
