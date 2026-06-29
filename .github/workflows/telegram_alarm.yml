@@ -1,4 +1,24 @@
+name: Telegram Alarm
+
 on:
   schedule:
-    - cron: '30 15 * * 1-5'   # 15:30 UTC = 18:30 TR, BIST kapanışından sonra
+    - cron: '30 15 * * 1-5'
   workflow_dispatch: {}
+
+jobs:
+  alarm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Bagimliliklar
+        run: pip install -r requirements.txt
+      - name: Alarm gonder
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          AVCI_VADE: gunluk
+        run: python telegram_alarm.py
