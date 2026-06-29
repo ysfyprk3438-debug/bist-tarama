@@ -1877,9 +1877,9 @@ def run_streamlit():
         "Holding": ["SAHOL","KCHOL","DOHOL","ALARK","BERA","GOLTS","ADEL","GESAN","MAVI","BRISA","KARSN","GLYHO"],
     }
     @st.cache_data(ttl=900)
-    def _gp_overview(kodlar, _surum=SURUM):
+    def _gp_tile(kod, _surum=SURUM):
         import gorsel_panel
-        return gorsel_panel.overview_html(list(kodlar))
+        return gorsel_panel.tile_html(kod)
     @st.cache_data(ttl=900)
     def _gp_detay(kod, _surum=SURUM):
         import gorsel_panel
@@ -1888,11 +1888,20 @@ def run_streamlit():
     if _sek != "-- sektor sec --":
         try:
             _kodlar = _SEKTORLER[_sek]
+            if st.session_state.get("gp_secili") not in _kodlar:
+                st.session_state["gp_secili"] = _kodlar[0]
             with st.spinner("Kartlar cekiliyor (ilk sefer ~yarim dakika surebilir)..."):
-                st.markdown(_gp_overview(tuple(_kodlar)), unsafe_allow_html=True)
-            _kod = st.selectbox("Tam detay icin hisse sec", _kodlar, key="gp_detay_kod")
-            with st.spinner("{} detayi hazirlaniyor...".format(_kod)):
-                st.markdown(_gp_detay(_kod), unsafe_allow_html=True)
+                for _i in range(0, len(_kodlar), 3):
+                    _cols = st.columns(3)
+                    for _c, _k in zip(_cols, _kodlar[_i:_i+3]):
+                        with _c:
+                            st.markdown(_gp_tile(_k), unsafe_allow_html=True)
+                            if st.button("{} \u25B8".format(_k), key="gp_btn_"+_k, use_container_width=True):
+                                st.session_state["gp_secili"] = _k
+            st.markdown("---")
+            _sec = st.session_state["gp_secili"]
+            with st.spinner("{} detayi hazirlaniyor...".format(_sec)):
+                st.markdown(_gp_detay(_sec), unsafe_allow_html=True)
         except Exception as _e:
             st.warning("Gorsel panel yuklenemedi: {}".format(_e))
 
