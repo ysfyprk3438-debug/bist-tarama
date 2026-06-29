@@ -1862,8 +1862,8 @@ def run_streamlit():
     # ── GORSEL OZET — grafikli, betimleyici (sinyal/hedef/yon tahmini YOK) ──
     st.markdown("---")
     st.subheader("\U0001F4C8 Gorsel Ozet — grafikli, betimleyici")
-    st.caption("Sektor sec; o sektorun fiyat grafikleri + 20-gun ortalamasi + gecmis olaylar "
-               "(kesisim/zirve/dip/oynaklik/gap) cizilir. Kesisim yonsuz gosterilir (kalibrasyon: ~%50). "
+    st.caption("Sektor sec → kartlari tara (yuzde · emoji · olay) → ilgini cekeni asagidan sec, "
+               "renkli golgeli grafik + sade okuma + tum betimleyici detay acilir. "
                "Sinyal/hedef/yon tahmini YOK — 'su an ne durumda'.")
     _SEKTORLER = {
         "Bankacilik": ["AKBNK","GARAN","HALKB","ISCTR","VAKBN","YKBNK","TSKB","ALBRK","SKBNK","KLNMA"],
@@ -1877,15 +1877,22 @@ def run_streamlit():
         "Holding": ["SAHOL","KCHOL","DOHOL","ALARK","BERA","GOLTS","ADEL","GESAN","MAVI","BRISA","KARSN","GLYHO"],
     }
     @st.cache_data(ttl=900)
-    def _gp_html(kodlar, _surum=SURUM):
+    def _gp_overview(kodlar, _surum=SURUM):
         import gorsel_panel
-        return gorsel_panel.panel_html(list(kodlar))
+        return gorsel_panel.overview_html(list(kodlar))
+    @st.cache_data(ttl=900)
+    def _gp_detay(kod, _surum=SURUM):
+        import gorsel_panel
+        return gorsel_panel.detay_html(kod)
     _sek = st.selectbox("Sektor", ["-- sektor sec --"] + list(_SEKTORLER.keys()), key="gp_sek")
     if _sek != "-- sektor sec --":
         try:
-            with st.spinner("Grafikler cekiliyor (ilk sefer ~yarim dakika surebilir)..."):
-                _gh = _gp_html(tuple(_SEKTORLER[_sek]))
-            st.markdown(_gh, unsafe_allow_html=True)
+            _kodlar = _SEKTORLER[_sek]
+            with st.spinner("Kartlar cekiliyor (ilk sefer ~yarim dakika surebilir)..."):
+                st.markdown(_gp_overview(tuple(_kodlar)), unsafe_allow_html=True)
+            _kod = st.selectbox("Tam detay icin hisse sec", _kodlar, key="gp_detay_kod")
+            with st.spinner("{} detayi hazirlaniyor...".format(_kod)):
+                st.markdown(_gp_detay(_kod), unsafe_allow_html=True)
         except Exception as _e:
             st.warning("Gorsel panel yuklenemedi: {}".format(_e))
 
