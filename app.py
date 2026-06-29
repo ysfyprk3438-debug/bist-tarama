@@ -1859,6 +1859,36 @@ def run_streamlit():
     html,data=build_html(veri=_veri(), akis=_akis())
     components.html(html,height=1320,scrolling=True)
 
+    # ── GORSEL OZET — grafikli, betimleyici (sinyal/hedef/yon tahmini YOK) ──
+    st.markdown("---")
+    st.subheader("\U0001F4C8 Gorsel Ozet — grafikli, betimleyici")
+    st.caption("Sektor sec; o sektorun fiyat grafikleri + 20-gun ortalamasi + gecmis olaylar "
+               "(kesisim/zirve/dip/oynaklik/gap) cizilir. Kesisim yonsuz gosterilir (kalibrasyon: ~%50). "
+               "Sinyal/hedef/yon tahmini YOK — 'su an ne durumda'.")
+    _SEKTORLER = {
+        "Bankacilik": ["AKBNK","GARAN","HALKB","ISCTR","VAKBN","YKBNK","TSKB","ALBRK","SKBNK","KLNMA"],
+        "Enerji": ["EUPWR","ODAS","ENJSA","AKSEN","ZOREN","AYEN","AYDEM","KCAER","CWENE","NATEN"],
+        "Sanayi": ["EREGL","KRDMD","ISDMR","CEMTS","CIMSA","AFYON","ARCLK","VESTL","BFREN","DOAS","OTKAR","FROTO","TOASO","TTRAK"],
+        "Saglik / Kimya": ["ECILC","SELEC","MPARK","DEVA","ECZYT","GUBRF","HEKTS","PETKM","SASA","TRCAS","PRKAB"],
+        "Perakende / Gida": ["BIMAS","MGROS","SOKM","ULKER","CCOLA","AEFES","TATGD","PNSUT","BANVT","DARDL"],
+        "Teknoloji / Telekom": ["TTKOM","TCELL","ASELS","NETAS","LOGO","INDES","ARENA","DGATE","KAREL","SMART","PAPIL"],
+        "Ulasim / Turizm": ["THYAO","PGSUS","TAVHL","CLEBI","MAALT","RYSAS"],
+        "Insaat / GYO": ["EKGYO","ISGYO","TRGYO","KLGYO","VKGYO","SNGYO","HLGYO","ENKAI","TKFEN","GSDHO"],
+        "Holding": ["SAHOL","KCHOL","DOHOL","ALARK","BERA","GOLTS","ADEL","GESAN","MAVI","BRISA","KARSN","GLYHO"],
+    }
+    @st.cache_data(ttl=900)
+    def _gp_html(kodlar, _surum=SURUM):
+        import gorsel_panel
+        return gorsel_panel.panel_html(list(kodlar))
+    _sek = st.selectbox("Sektor", ["-- sektor sec --"] + list(_SEKTORLER.keys()), key="gp_sek")
+    if _sek != "-- sektor sec --":
+        try:
+            with st.spinner("Grafikler cekiliyor (ilk sefer ~yarim dakika surebilir)..."):
+                _gh = _gp_html(tuple(_SEKTORLER[_sek]))
+            st.markdown(_gh, unsafe_allow_html=True)
+        except Exception as _e:
+            st.warning("Gorsel panel yuklenemedi: {}".format(_e))
+
     with st.expander("\U0001F4CB Raporu gor"):
         _rap=rapor_md(data)
         st.markdown(_rap)
