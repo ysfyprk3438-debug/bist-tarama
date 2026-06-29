@@ -26,6 +26,9 @@ jobs:
       - name: gunluk kaydi ekle
         run: python gunluk_log.py
 
+      - name: kalibrasyon defteri (kaydet + sonuclandir)
+        run: python app.py kalib || echo "kalib calismadi, devam"
+
       - name: degisiklikleri commit et
         run: |
           git config user.name "apex-bot"
@@ -34,6 +37,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "degisiklik yok, commit atlandi"
           else
-            git commit -m "ileri-test $(date -u +%F)"
+            git commit -m "ileri-test + kalib $(date -u +%F)"
             git push
           fi
