@@ -38,7 +38,7 @@ import json, datetime, math, pathlib
 import numpy as np
 
 OUT = "apex.html"
-SURUM = "v3.8"
+SURUM = "v3.9"
 TAHMIN_TAVAN = 40.0
 ATR_K_STOP = 2.0
 ATR_K_HEDEF = 3.0
@@ -382,6 +382,47 @@ def akd_hisse(sym):
         return None
     return (v.get("hisseler") or {}).get(sym)
 
+# ── AKD VERI KALITESI: sahte doldurma YOK, sadece denetler (v3.9) ──
+# Invariant: tum brokerlerin net tutar toplami ~0 (her alicinin karsisinda satici
+# var). GrandNetAmount bunu yansitir. top-5 listeleri KESIK oldugu icin saglik
+# Grand* toplamlarindan bakilir, listelerden DEGIL. ISBTR ~2.9 katrilyon gibi
+# anomaliler ust tavanla yakalanir. Bozuk gun "supheli" -> panelde gosterilmez,
+# arsive YAZILMAZ. Uydurma sifirla doldurma KESINLIKLE yok.
+AKD_NET_TOLERANS = 0.05       # |grand_net|/grand_total bunu asarsa supheli (saglikli AKD'de ~0)
+AKD_TUTAR_TAVAN = 1e14        # tek hisse/gun bu TL'yi asarsa anomali (BIST'te imkansiz)
+
+def akd_saglik(akd_sym):
+    """Bir hissenin AKD snapshot'ini DOGRULAR (uydurmadan).
+    Donen: {"saglikli":bool, "neden":str|None, "net_oran":float|None}."""
+    if not akd_sym:
+        return {"saglikli": False, "neden": "snapshot yok", "net_oran": None}
+    try:
+        gt = float(akd_sym.get("grand_total_amount") or 0)
+        gn = float(akd_sym.get("grand_net_amount") or 0)
+    except Exception:
+        return {"saglikli": False, "neden": "tutar okunamadi", "net_oran": None}
+    if gt <= 0:
+        return {"saglikli": False, "neden": "grand_total <= 0 (veri yok)", "net_oran": None}
+    if gt > AKD_TUTAR_TAVAN:
+        return {"saglikli": False, "neden": "anomali: grand_total cok buyuk ({:.1e} TL)".format(gt),
+                "net_oran": None}
+    net_oran = abs(gn) / gt
+    if net_oran > AKD_NET_TOLERANS:
+        return {"saglikli": False,
+                "neden": "net dengesizligi %{:.1f} (alici/satici tutmuyor; eksik/bozuk veri)".format(net_oran * 100),
+                "net_oran": round(net_oran, 4)}
+    for grup in ("alici", "satici"):
+        for b in (akd_sym.get(grup) or []):
+            try:
+                na = abs(float(b.get("net_amount") or 0)); ta = float(b.get("total_amount") or 0)
+            except Exception:
+                continue
+            if ta > 0 and na > ta * 1.01:
+                return {"saglikli": False,
+                        "neden": "broker {} net>brut (bozuk satir)".format(b.get("ad") or b.get("broker") or "?"),
+                        "net_oran": round(net_oran, 4)}
+    return {"saglikli": True, "neden": None, "net_oran": round(net_oran, 4)}
+
 def _akd_konsantrasyon(akd_sym):
     """En buyuk islem hacmine sahip brokerin toplam hacme oranini (%) dondurur.
     (broker_ad, yuzde) veya (None, None). 'broker' tuzak bayragini besler."""
@@ -460,6 +501,7 @@ def akd_bayraklari(akd_sym):
 AKD_ARSIV = "akd_arsiv.csv"
 AKD_ARSIV_BASLIK = ["tarih","hisse","rol","broker","ad","tip","net_amount","total_amount"]
 _AKD_ARSIV_CACHE = {"yuklendi": False, "satir": []}
+_AKD_ARSIV_DURUM = {"supheli": 0}   # son akd_arsiv_ekle cagrisinda atlanan supheli gun sayisi
 
 def akd_arsiv_ekle(akd_data):
     """akd_takas.json icerigini (dict: {hisseler:{...}}) arsive EKLER.
@@ -479,13 +521,16 @@ def akd_arsiv_ekle(akd_data):
                     satirlar.append(r); mevcut.add((r.get("tarih"), r.get("hisse")))
         except Exception:
             satirlar = []; mevcut = set()
-    eklendi = 0
+    eklendi = 0; _AKD_ARSIV_DURUM["supheli"] = 0
     for sym, snap in hisseler.items():
         if not isinstance(snap, dict):
             continue
         tarih = str(snap.get("tarih") or "").strip()
         if not tarih or (tarih, sym) in mevcut:
             continue                                   # o gun zaten arsivde
+        if not akd_saglik(snap)["saglikli"]:
+            _AKD_ARSIV_DURUM["supheli"] += 1
+            continue                                   # SUPHELI gun arsive YAZILMAZ (uydurma yok)
         for rol in ("alici", "satici"):
             for b in (snap.get(rol) or []):
                 satirlar.append({"tarih": tarih, "hisse": sym, "rol": rol,
@@ -1835,6 +1880,15 @@ def run_streamlit():
             st.markdown("---")
             # ── ForInvest AKD snapshot (varsa) — bilgi paneli + broker bayrak on-dolum ──
             akd_b = akd_bayraklari(akd_hisse(sec["tk"]))
+            _akd_snap = akd_hisse(sec["tk"])
+            _akd_sag = akd_saglik(_akd_snap) if _akd_snap else None
+            if _akd_snap and _akd_sag and not _akd_sag["saglikli"]:
+                st.markdown("<div style='font-size:12px;color:#D2715A;background:rgba(210,113,90,.08);"
+                            "border-left:3px solid #D2715A;padding:8px 12px;border-radius:4px;margin:4px 0'>"
+                            "\u26A0 ForInvest AKD bu gun <b>SUPHELI</b>: {n}. Broker analizi "
+                            "gosterilmiyor \u2014 bozuk veriyle yargi yapmiyoruz (UYDURMA YOK).</div>".format(
+                                n=_akd_sag["neden"]), unsafe_allow_html=True)
+                akd_b = None   # bozuk snapshot -> broker panelini ac, ama tablolari gosterme
             akd_oto = {}
             if akd_b:
                 bg = akd_b["bilgi"]; akd_oto = akd_b.get("oto_manuel", {})
@@ -2191,8 +2245,8 @@ elif __name__=="__main__":
         # Calistir:  python app.py akd-arsiv   (Desktop Claude JSON'i koyduktan sonra)
         eklendi = akd_arsiv_ekle(akd_oku())
         toplam = len(akd_arsiv_oku())
-        print("AKD-ARSIV {} · +{} yeni satir · arsivde toplam {} satir".format(
-            SURUM, eklendi, toplam))
+        print("AKD-ARSIV {} · +{} yeni satir · {} supheli gun atlandi · arsivde toplam {} satir".format(
+            SURUM, eklendi, _AKD_ARSIV_DURUM.get("supheli", 0), toplam))
     elif len(_sys.argv) > 1 and _sys.argv[1] == "karar":
         # CRON GIRISI: vadesi dolmus kararlari guncel fiyatla kapat (isabet isaretle).
         # Calistir:  python app.py karar   (ardindan git add -A && commit && push)
