@@ -38,7 +38,7 @@ import json, datetime, math, pathlib
 import numpy as np
 
 OUT = "apex.html"
-SURUM = "v4.1"
+SURUM = "v4.2"
 TAHMIN_TAVAN = 40.0
 ATR_K_STOP = 2.0
 ATR_K_HEDEF = 3.0
@@ -1173,6 +1173,52 @@ def karar_ozet():
             "toplam_etiket": t_et, "toplam_aciklama": t_ac, "acik_karar": acik, "placebo": 50}
 
 
+def islem_maliyeti(poz_tl, entry, stop, hedef, maliyet_orani):
+    """Round-trip islem maliyeti + SURTUNME uyarilari. BETIMLEYICI, tahmin DEGIL.
+    maliyet_orani: round-trip oran (0.004 = %0.4, alis+satis komisyon+spread).
+    APEX'in cikti'lari surtunmesiz hesaplanir; bu katman gercege oturtur.
+    Donen dict veya None."""
+    try:
+        poz_tl = float(poz_tl); entry = float(entry); mo = float(maliyet_orani)
+    except Exception:
+        return None
+    if poz_tl <= 0 or entry <= 0 or mo < 0:
+        return None
+    maliyet_tl = poz_tl * mo
+    out = {"maliyet_tl": round(maliyet_tl), "maliyet_pct": round(mo * 100, 2),
+           "poz_tl": round(poz_tl), "bayraklar": []}
+    # Stop mesafesi vs maliyet: stop surtunmenin icindeyse anlamsiz/erken tetiklenir
+    try:
+        st_ = float(stop) if stop not in (None, "", "-") else None
+    except Exception:
+        st_ = None
+    if st_ and 0 < st_ < entry:
+        stop_mes = (entry - st_) / entry
+        out["stop_mesafe_pct"] = round(stop_mes * 100, 1)
+        out["stop_zarar_tl"] = round(poz_tl * stop_mes)
+        out["stop_maliyet_kat"] = round(stop_mes / mo, 1) if mo > 0 else None
+        if mo > 0 and stop_mes < mo * 1.5:
+            out["bayraklar"].append(
+                "Stop maliyete cok yakin: stop %{:.1f} uzakta ama round-trip maliyet %{:.1f} \u2014 "
+                "stop surtunme gurultusunun icinde, anlamli korumadan once maliyet yer.".format(
+                    stop_mes * 100, mo * 100))
+    # Hedef mesafesi vs maliyet: hareketin ne kadari surtunmeye gidiyor
+    try:
+        hd_ = float(hedef) if hedef not in (None, "", "-") else None
+    except Exception:
+        hd_ = None
+    if hd_ and hd_ > entry:
+        hed_mes = (hd_ - entry) / entry
+        out["hedef_mesafe_pct"] = round(hed_mes * 100, 1)
+        out["maliyet_vs_hedef_pct"] = round(mo / hed_mes * 100, 1) if hed_mes > 0 else None
+        if hed_mes > 0 and mo / hed_mes > 0.20:
+            out["bayraklar"].append(
+                "Maliyet, hedefe olan mesafenin %{:.0f}'ini yiyor: hedefe %{:.1f} var, round-trip "
+                "maliyet %{:.1f} \u2014 net beklenti cok inceliyor.".format(
+                    mo / hed_mes * 100, hed_mes * 100, mo * 100))
+    return out
+
+
 def senaryo_cerceve(px, hedef, vol_pct, atr):
     if not px or px <= 0:
         return None
@@ -1211,7 +1257,7 @@ def monte_carlo(entry, vol_pct, gun=20, n=4000, stop=None, hedef=None, seed=42):
         res["hedef_deg"]=int(round(float(np.mean(np.max(paths,axis=1)>=hedef))*100))
     return res
 
-def karar_cercevesi(entry, hedef, vol_pct, atr, sermaye, lehte, teknik_hedef=None):
+def karar_cercevesi(entry, hedef, vol_pct, atr, sermaye, lehte, teknik_hedef=None, maliyet_orani=0.004):
     if not entry or entry<=0: return None
     atr=float(atr) if atr else entry*0.02
     stop=round(max(entry-ATR_K_STOP*atr, entry*0.6),2)
@@ -1224,8 +1270,9 @@ def karar_cercevesi(entry, hedef, vol_pct, atr, sermaye, lehte, teknik_hedef=Non
     th=teknik_hedef if (isinstance(teknik_hedef,(int,float)) and teknik_hedef>entry) else None
     rr=round((th-entry)/max(entry-stop,1e-9),1) if th else None
     sen=senaryo_cerceve(entry,hedef,vol_pct,atr) if (hedef and hedef>0) else None
+    mal=islem_maliyeti(poz_tl, entry, stop, (th or hedef), maliyet_orani)
     return {"stop":stop,"poz_pct":poz,"poz_tl":poz_tl,"adet":adet,
-            "riskli_tl":riskli_tl,"riskli_pct":riskli_pct,"rr":rr,"senaryo":sen}
+            "riskli_tl":riskli_tl,"riskli_pct":riskli_pct,"rr":rr,"senaryo":sen,"maliyet":mal}
 
 def build_app_data(bugun=None, veri=None, akis=None):
     bugun=bugun or datetime.date.today()
@@ -2014,11 +2061,15 @@ def run_streamlit():
         hedef=st.number_input("Analist hedefi — istege bagli (ForInvest'te gordugun, \u20BA)",
                               min_value=0.0,value=0.0,step=0.01,key="kc_hedef",
                               help="0 birakirsan senaryo bolumu atlanir.")
+        maliyet_pct=st.number_input("Round-trip islem maliyeti (%) — komisyon + spread",
+                              min_value=0.0,max_value=5.0,value=0.4,step=0.05,key="kc_maliyet",
+                              help="Alis+satis toplam. Araci kurumuna gore ayarla (BIST'te tipik %0.2-0.5).")
         ufuk=st.radio("Belirsizlik ufku (Monte Carlo)",[10,20,60],index=1,horizontal=True,key="kc_ufuk",
                       format_func=lambda g:"{} gun".format(g))
         if st.button("Karar cercevesini cikar",key="kc_btn",use_container_width=True):
             k=karar_cercevesi(float(entry),float(hedef),sec.get("vol"),sec.get("atr"),
-                              float(sermaye),data["rejim"]["lehte"],teknik_hedef=sec.get("hedef"))
+                              float(sermaye),data["rejim"]["lehte"],teknik_hedef=sec.get("hedef"),
+                              maliyet_orani=float(maliyet_pct)/100.0)
             if not k:
                 st.warning("Hesaplanamadi — giris fiyati/veri eksik.")
             else:
@@ -2035,6 +2086,28 @@ def run_streamlit():
                           help="Teknik hedefe gore kazanc/risk orani")
                 st.markdown("**Stop = ATR(14)×{} · poz = hisseye-ozel vol-target.** Bu, normal bir dususte "
                             "kaybinin butcende kalmasi icin. Giris/cikis kararini SEN verirsin.".format(int(ATR_K_STOP)))
+                mal=k.get("maliyet")
+                if mal:
+                    st.markdown("#### Islem maliyeti (surtunme) \u2014 cikti'lar artik gercege oturuyor")
+                    mm1,mm2,mm3=st.columns(3)
+                    mm1.metric("Round-trip maliyet","\u20BA{:,}".format(mal["maliyet_tl"]).replace(",","."),
+                               delta="%{} poz".format(mal["maliyet_pct"]),delta_color="off")
+                    if mal.get("stop_maliyet_kat") is not None:
+                        mm2.metric("Stop / maliyet","{}x".format(mal["stop_maliyet_kat"]),
+                                   help="Stop mesafesi round-trip maliyetin kac kati uzakta")
+                    if mal.get("maliyet_vs_hedef_pct") is not None:
+                        mm3.metric("Hedefin maliyete gideni","%{}".format(mal["maliyet_vs_hedef_pct"]),
+                                   help="Hedefe olan mesafenin yuzde kacini surtunme yiyor")
+                    for _by in mal["bayraklar"]:
+                        st.markdown("<div style='font-size:13px;color:#E0A458;background:rgba(224,164,88,.08);"
+                                    "border-left:3px solid #E0A458;padding:8px 12px;border-radius:4px;margin:4px 0'>"
+                                    "\u26A0 {}</div>".format(_by),unsafe_allow_html=True)
+                    if not mal["bayraklar"]:
+                        st.caption("Surtunme makul: maliyet ne stop'u boguyor ne hedefi eritiyor. "
+                                   "Yine de her al-sat round-trip \u20BA{:,} goturur \u2014 sik islem maliyeti biriktirir.".format(
+                                       mal["maliyet_tl"]).replace(",","."))
+                    st.caption("Maliyet betimlemedir, 'al/sat' DEGIL. APEX'in stop/hedef/poz cikti'lari "
+                               "surtunmesiz hesaplanir; bu blok onlari gercek komisyon+spread'e oturtur.")
                 if k["senaryo"]:
                     c=k["senaryo"]
                     st.markdown("**Analist hedefi cercevesi:** {} mesafe — {}: %{:+}".format(c["buyukluk"],c["yon"],c["fark"]))
