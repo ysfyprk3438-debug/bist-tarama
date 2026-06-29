@@ -38,7 +38,7 @@ import json, datetime, math, pathlib
 import numpy as np
 
 OUT = "apex.html"
-SURUM = "v4.0"
+SURUM = "v4.1"
 TAHMIN_TAVAN = 40.0
 ATR_K_STOP = 2.0
 ATR_K_HEDEF = 3.0
@@ -390,6 +390,7 @@ def akd_hisse(sym):
 # arsive YAZILMAZ. Uydurma sifirla doldurma KESINLIKLE yok.
 AKD_NET_TOLERANS = 0.05       # |grand_net|/grand_total bunu asarsa supheli (saglikli AKD'de ~0)
 AKD_TUTAR_TAVAN = 1e14        # tek hisse/gun bu TL'yi asarsa anomali (BIST'te imkansiz)
+AKD_AYKIRI_KAT = 50.0         # bir broker, diger brokerlerin medyaninin bu katini asarsa aykiri
 
 def akd_saglik(akd_sym):
     """Bir hissenin AKD snapshot'ini DOGRULAR (uydurmadan).
@@ -420,6 +421,26 @@ def akd_saglik(akd_sym):
             if ta > 0 and na > ta * 1.01:
                 return {"saglikli": False,
                         "neden": "broker {} net>brut (bozuk satir)".format(b.get("ad") or b.get("broker") or "?"),
+                        "net_oran": round(net_oran, 4)}
+    # medyan-tabanli aykiri deger: bir broker, digerlerinin medyaninin AKD_AYKIRI_KAT
+    # katini asarsa anomali (ISBTR ~2.9 katrilyon gibi; mutlak tavan altinda kalsa bile yakalar)
+    _mags, _isim = [], {}
+    for grup in ("alici", "satici"):
+        for b in (akd_sym.get(grup) or []):
+            try:
+                m = abs(float(b.get("net_amount") or 0))
+            except Exception:
+                continue
+            if m > 0:
+                _mags.append(m); _isim[m] = b.get("ad") or b.get("broker") or "?"
+    if len(_mags) >= 4:
+        _med = float(np.median(_mags))
+        if _med > 0:
+            _enb = max(_mags)
+            if _enb > AKD_AYKIRI_KAT * _med:
+                return {"saglikli": False,
+                        "neden": "aykiri: {} net, medyanin {:.0f} kati (anomali)".format(
+                            _isim[_enb], _enb / _med),
                         "net_oran": round(net_oran, 4)}
     return {"saglikli": True, "neden": None, "net_oran": round(net_oran, 4)}
 
