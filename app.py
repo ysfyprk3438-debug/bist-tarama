@@ -960,7 +960,7 @@ body{background:var(--ink);color:var(--bone);font-family:var(--body);line-height
 
 <div id="view-detail" class="hidden"></div>
 
-<div class="disc" id="disc">APEX v2.9 · yatirim tavsiyesi degildir · getiri tahmini ~ yazi-tura, kanitlanmis edge degil</div>
+<div class="disc" id="disc">APEX __SURUM__ · yatirim tavsiyesi degildir · getiri tahmini ~ yazi-tura, kanitlanmis edge degil</div>
 </div>
 
 <script>
@@ -1292,7 +1292,7 @@ renderDash();
 def build_html(veri=None, akis=None):
     data=build_app_data(veri=veri, akis=akis)
     inject="<script>window.__APP_DATA__ = "+json.dumps(data,ensure_ascii=False)+";</script>\n"
-    html=HTML_TEMPLATE.replace("<script>",inject+"<script>",1)
+    html=HTML_TEMPLATE.replace("<script>",inject+"<script>",1).replace("__SURUM__",SURUM)
     return html,data
 
 def write_html(out=OUT,veri=None):
