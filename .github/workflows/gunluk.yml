@@ -38,5 +38,6 @@ jobs:
             echo "degisiklik yok, commit atlandi"
           else
             git commit -m "ileri-test + kalib $(date -u +%F)"
+            git pull --rebase origin main || true
             git push
           fi
