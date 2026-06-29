@@ -1,19 +1,12 @@
 {
   "baslangic": 100000.0,
-  "nakit": 36088.89292000001,
+  "nakit": 40876.551840000015,
   "pozisyonlar": {
     "TCELL": {
       "lot": 108,
       "maliyet": 110.5,
       "hedef": 115.59,
       "stop": 107.79,
-      "tarih": "2026-06-26"
-    },
-    "TAVHL": {
-      "lot": 37,
-      "maliyet": 284.25,
-      "hedef": 301.05,
-      "stop": 275.29,
       "tarih": "2026-06-26"
     },
     "KLNMA": {
@@ -57,11 +50,29 @@
       "hedef": 21.98,
       "stop": 20.42,
       "tarih": "2026-06-26"
+    },
+    "TATGD": {
+      "lot": 278,
+      "maliyet": 19.93,
+      "hedef": 21.05,
+      "stop": 19.33,
+      "tarih": "2026-06-29"
     }
   },
-  "islemler": [],
+  "islemler": [
+    {
+      "kod": "TAVHL",
+      "al": 284.25,
+      "sat": 280.0,
+      "lot": 37,
+      "kz_pct": -1.5,
+      "kz_tl": -157,
+      "sebep": "sinyal ↩️",
+      "tarih": "2026-06-29"
+    }
+  ],
   "karakter": "dengeli",
-  "guncelleme": "2026-06-26T21:06",
+  "guncelleme": "2026-06-29T17:19",
   "deger_gecmis": [
     99920,
     99920,
@@ -72,6 +83,7 @@
     99882,
     99882,
     99882,
-    99835
+    99835,
+    99587
   ]
 }
