@@ -38,7 +38,7 @@ import json, datetime, math, pathlib
 import numpy as np
 
 OUT = "apex.html"
-SURUM = "v3.2"
+SURUM = "v3.3"
 TAHMIN_TAVAN = 40.0
 ATR_K_STOP = 2.0
 ATR_K_HEDEF = 3.0
@@ -1585,6 +1585,20 @@ import sys as _sys
 if "streamlit" in _sys.modules:
     run_streamlit()
 elif __name__=="__main__":
-    out,data=write_html()
-    print("OK {} · {} · {} hisse ({} canli) · rejim {} · kerteriz {}/100".format(
-        out,SURUM,len(data['stocks']),data['n_veri'],data['rejim']['durus'],data['merkez']))
+    if len(_sys.argv) > 1 and _sys.argv[1] == "kalib":
+        # CRON GIRISI: bugunun sinyallerini kaydet + vadesi dolanlari sonuclandir.
+        # Calistir:  python app.py kalib   (ardindan git add -A && commit && push)
+        data = build_app_data()
+        bugun = datetime.date.today()
+        eklendi = kalibrasyon_kaydet(bugun, data)
+        fiyatlar = {s["tk"]: s["px"] for s in data["stocks"] if s.get("veri")}
+        kapatildi = kalibrasyon_sonuclandir(bugun, fiyatlar)
+        oz = kalibrasyon_ozet() or {}
+        print("KALIB {} · {} · +{} yeni sinyal · {} kapatildi · toplam N={} · acik={} · isabet={}".format(
+            SURUM, bugun.isoformat(), eklendi, kapatildi,
+            oz.get("toplam_n", 0), oz.get("acik_kayit", 0),
+            ("%"+str(oz.get("toplam_isabet")) if oz.get("toplam_isabet") is not None else "—")))
+    else:
+        out,data=write_html()
+        print("OK {} · {} · {} hisse ({} canli) · rejim {} · kerteriz {}/100".format(
+            out,SURUM,len(data['stocks']),data['n_veri'],data['rejim']['durus'],data['merkez']))
