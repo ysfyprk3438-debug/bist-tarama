@@ -38,7 +38,7 @@ import json, datetime, math, pathlib
 import numpy as np
 
 OUT = "apex.html"
-SURUM = "v3.4"
+SURUM = "v3.5"
 TAHMIN_TAVAN = 40.0
 ATR_K_STOP = 2.0
 ATR_K_HEDEF = 3.0
@@ -447,6 +447,111 @@ def akd_bayraklari(akd_sym):
              "alici": alici, "satici": satici,
              "grand_net": akd_sym.get("grand_net_amount")}
     return {"oto_manuel": oto_manuel, "bilgi": bilgi}
+
+
+# ══════════════════════════════════════════════════════════════
+# BROKER ARSIVI — gunluk AKD snapshot'larini ZAMAN icinde biriktirir
+# ══════════════════════════════════════════════════════════════
+# Amac: "su broker su hissede su tarihlerde net ne yapti" GECMIS davranis kaydi.
+# GOZLEM, kehanet DEGIL — "gecmiste net aliciydi" der, "yarin alacak" DEMEZ.
+# Veri akisi: Desktop Claude ForInvest akdAt ceker -> akd_takas.json (tek gun) ->
+# repoya koyar -> cron 'python app.py akd-arsiv' ile o gunu arsive EKLER (idempotent).
+# Streamlit/cron MCP cekemez; sadece JSON snapshot'i arsive aktarir. Bos -> "—".
+AKD_ARSIV = "akd_arsiv.csv"
+AKD_ARSIV_BASLIK = ["tarih","hisse","rol","broker","ad","tip","net_amount","total_amount"]
+_AKD_ARSIV_CACHE = {"yuklendi": False, "satir": []}
+
+def akd_arsiv_ekle(akd_data):
+    """akd_takas.json icerigini (dict: {hisseler:{...}}) arsive EKLER.
+    IDEMPOTENT: (tarih,hisse) zaten arsivde varsa o gun atlanir.
+    Eklenen satir sayisini dondurur. Veri yok/bozuksa 0."""
+    import csv as _csv
+    if not isinstance(akd_data, dict):
+        return 0
+    hisseler = akd_data.get("hisseler") or {}
+    if not hisseler:
+        return 0
+    p = pathlib.Path(AKD_ARSIV); satirlar = []; mevcut = set()
+    if p.exists():
+        try:
+            with open(p, encoding="utf-8") as f:
+                for r in _csv.DictReader(f):
+                    satirlar.append(r); mevcut.add((r.get("tarih"), r.get("hisse")))
+        except Exception:
+            satirlar = []; mevcut = set()
+    eklendi = 0
+    for sym, snap in hisseler.items():
+        if not isinstance(snap, dict):
+            continue
+        tarih = str(snap.get("tarih") or "").strip()
+        if not tarih or (tarih, sym) in mevcut:
+            continue                                   # o gun zaten arsivde
+        for rol in ("alici", "satici"):
+            for b in (snap.get(rol) or []):
+                satirlar.append({"tarih": tarih, "hisse": sym, "rol": rol,
+                                 "broker": b.get("broker", ""), "ad": b.get("ad", ""),
+                                 "tip": b.get("tip", ""),
+                                 "net_amount": b.get("net_amount", ""),
+                                 "total_amount": b.get("total_amount", "")})
+                eklendi += 1
+        mevcut.add((tarih, sym))
+    if eklendi:
+        try:
+            with open(p, "w", encoding="utf-8", newline="") as f:
+                w = _csv.DictWriter(f, fieldnames=AKD_ARSIV_BASLIK); w.writeheader()
+                for r in satirlar: w.writerow({k: r.get(k, "") for k in AKD_ARSIV_BASLIK})
+        except Exception:
+            return 0
+    return eklendi
+
+def akd_arsiv_oku():
+    """Arsivi okur (cache'ler). Satir listesi. Yok/bos -> []."""
+    if _AKD_ARSIV_CACHE["yuklendi"]:
+        return _AKD_ARSIV_CACHE["satir"]
+    import csv as _csv
+    satir = []
+    try:
+        p = pathlib.Path(AKD_ARSIV)
+        if p.exists():
+            with open(p, encoding="utf-8") as f:
+                satir = list(_csv.DictReader(f))
+    except Exception:
+        satir = []
+    _AKD_ARSIV_CACHE["yuklendi"] = True; _AKD_ARSIV_CACHE["satir"] = satir
+    return satir
+
+def broker_gecmis(hisse, gun=60):
+    """Bir hissedeki broker davranis GECMISI (son `gun` arsiv gunu).
+    Her broker: toplam net, alici-gun / satici-gun sayisi, son gorulen tarih.
+    GOZLEM — gecmis davranis. Tahmin/kehanet DEGIL. Arsiv yoksa None."""
+    rows = akd_arsiv_oku()
+    if not rows:
+        return None
+    h = [r for r in rows if r.get("hisse") == hisse]
+    if not h:
+        return None
+    tarihler = sorted({r.get("tarih", "") for r in h})
+    son_tarihler = set(tarihler[-gun:])               # son N arsiv gunu (string sirasi = kronolojik)
+    h = [r for r in h if r.get("tarih") in son_tarihler]
+    grup = {}
+    for r in h:
+        ad = r.get("ad") or r.get("broker") or "?"
+        try: na = float(r.get("net_amount") or 0)
+        except Exception: na = 0.0
+        g = grup.setdefault(ad, {"net": 0.0, "alici_gun": 0, "satici_gun": 0,
+                                 "son": "", "tip": r.get("tip", "")})
+        g["net"] += na
+        if na > 0: g["alici_gun"] += 1
+        elif na < 0: g["satici_gun"] += 1
+        if r.get("tarih", "") > g["son"]: g["son"] = r.get("tarih", "")
+    brokerlar = [{"ad": ad, "net": round(v["net"], 0), "alici_gun": v["alici_gun"],
+                  "satici_gun": v["satici_gun"], "son": v["son"], "tip": v["tip"]}
+                 for ad, v in grup.items()]
+    brokerlar.sort(key=lambda x: -abs(x["net"]))
+    return {"hisse": hisse, "gun_sayisi": len(son_tarihler),
+            "ilk_tarih": min(son_tarihler) if son_tarihler else None,
+            "son_tarih": max(son_tarihler) if son_tarihler else None,
+            "brokerlar": brokerlar[:10]}
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1390,6 +1495,35 @@ def run_streamlit():
                 st.caption("Hepsi BETIMLEYICI \u2014 'su an fiyat nerede, hacim kimde, geri cekilme ne kadar'. "
                            "Hicbiri 'yukselir/al' DEMEZ. Gun-ici akis bugunu anlatir, yarini degil.")
 
+        # ── BROKER GECMISI (arsiv) — GOZLEM: "su broker zaman icinde ne yapti" ──
+        with st.expander("\U0001F4DA Broker gecmisi (arsiv) — gozlem, kehanet DEGIL", expanded=False):
+            bg2 = broker_gecmis(sec["tk"])
+            if not bg2 or not bg2.get("brokerlar"):
+                st.caption("Bu hisse icin broker arsivi henuz bos (akd_arsiv.csv). ForInvest AKD verisi "
+                           "Desktop'tan gelip her gun biriktikce dolar. UYDURMA YOK \u2014 veri gelene kadar yargi yok.")
+            else:
+                def _tl2(x):
+                    try: x=float(x)
+                    except Exception: return "—"
+                    a=abs(x)
+                    if a>=1e9: return ("{:+.2f} mlr\u20BA").format(x/1e9)
+                    if a>=1e6: return ("{:+.1f} mln\u20BA").format(x/1e6)
+                    return ("{:+.0f}\u20BA").format(x)
+                st.caption("Son {} arsiv gunu ({} \u2192 {}). Her broker icin: toplam net + kac gun alici / kac gun satici. "
+                           "Bu GECMIS davranis; 'yarin ne yapar' DEMEZ.".format(
+                               bg2["gun_sayisi"], bg2["ilk_tarih"], bg2["son_tarih"]))
+                for b in bg2["brokerlar"]:
+                    renk = "#4FB8A4" if b["net"] > 0 else ("#D2715A" if b["net"] < 0 else "#9AA4A0")
+                    tipet = (" · " + b["tip"]) if b.get("tip") else ""
+                    st.markdown("<div style='font-size:13px;margin:3px 0'>"
+                                "<b>{ad}</b>{tip} &middot; net <b style='color:{c}'>{net}</b> "
+                                "<span style='color:#9AA4A0'>({ag} gun alici / {sg} gun satici · son {son})</span></div>".format(
+                                    ad=b["ad"], tip=tipet, c=renk, net=_tl2(b["net"]),
+                                    ag=b["alici_gun"], sg=b["satici_gun"], son=b["son"]),
+                                unsafe_allow_html=True)
+                st.caption("Surekli net alici/satici olmak bir KALIP'tir \u2014 ama bu kalibin yarin sureceginin "
+                           "garantisi YOK. Baskalari da ayni veriyi gorur. Gozlem, edge degil.")
+
         # ── TUZAK KONTROLU (10/10) — ters matematik: once "neden ALMAMALIYIM?" ──
         with st.expander("\U0001F3AF Tuzak kontrolu (10/10) — once 'neden ALMAMALIYIM?'", expanded=False):
             oto_t=sec.get("tuzak")
@@ -1599,6 +1733,13 @@ elif __name__=="__main__":
             SURUM, bugun.isoformat(), eklendi, kapatildi,
             oz.get("toplam_n", 0), oz.get("acik_kayit", 0),
             ("%"+str(oz.get("toplam_isabet")) if oz.get("toplam_isabet") is not None else "—")))
+    elif len(_sys.argv) > 1 and _sys.argv[1] == "akd-arsiv":
+        # CRON GIRISI: akd_takas.json'daki gunu broker arsivine EKLE (idempotent).
+        # Calistir:  python app.py akd-arsiv   (Desktop Claude JSON'i koyduktan sonra)
+        eklendi = akd_arsiv_ekle(akd_oku())
+        toplam = len(akd_arsiv_oku())
+        print("AKD-ARSIV {} · +{} yeni satir · arsivde toplam {} satir".format(
+            SURUM, eklendi, toplam))
     else:
         out,data=write_html()
         print("OK {} · {} · {} hisse ({} canli) · rejim {} · kerteriz {}/100".format(
