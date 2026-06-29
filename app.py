@@ -38,7 +38,7 @@ import json, datetime, math, pathlib
 import numpy as np
 
 OUT = "apex.html"
-SURUM = "v3.6"
+SURUM = "v3.7"
 TAHMIN_TAVAN = 40.0
 ATR_K_STOP = 2.0
 ATR_K_HEDEF = 3.0
@@ -630,6 +630,70 @@ def temel_betimle(t):
 
 
 # ══════════════════════════════════════════════════════════════
+# PORTFOY RISK — "tek hisse" degil "tum kitap" (v3.7)
+# ══════════════════════════════════════════════════════════════
+# Profesyoneli amatorden ayiran katman. BETIMLEYICI + RISK, tahmin DEGIL.
+# Korelasyon birden cok hissenin GIZLI tek-bahis olup olmadigini gosterir
+# (2 banka = aslinda tek bahis). Vol-hedefleme = APEX'in DOGRULANMIS ekseni,
+# ama tek hissede degil portfoyun TAMAMINDA. Yon/getiri kehaneti YOK.
+def portfoy_riski(getiriler, agirliklar, sektorler=None, dd_butce=0.015, k=2.5, lehte="notr"):
+    """Portfoy seviyesi risk profili. getiriler: {sym: gunluk_getiri dizisi},
+    agirliklar: {sym: tl_veya_oran}. Yetersiz veri -> None (UYDURMA YOK)."""
+    syms = [s for s in agirliklar if s in getiriler and len(np.asarray(getiriler[s])) >= 30]
+    if len(syms) < 1:
+        return None
+    minlen = min(len(np.asarray(getiriler[s])) for s in syms)
+    if minlen < 30:
+        return None
+    R = np.column_stack([np.asarray(getiriler[s], float)[-minlen:] for s in syms])
+    w = np.array([max(float(agirliklar[s]), 0.0) for s in syms], float)
+    if w.sum() <= 0:
+        return None
+    w = w / w.sum()
+    ann = np.sqrt(252.0)
+    vol_i = R.std(axis=0, ddof=1) * ann
+    cov = np.atleast_2d(np.cov(R, rowvar=False, ddof=1))
+    port_vol = float(np.sqrt(max(float(w @ cov @ w), 0.0))) * ann
+    agr_ort_vol = float(w @ vol_i)
+    cesit = (agr_ort_vol / port_vol) if port_vol > 1e-9 else 1.0
+    std = np.sqrt(np.diag(cov))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        corr = cov / np.outer(std, std)
+    ciftler = []
+    for i in range(len(syms)):
+        for j in range(i + 1, len(syms)):
+            ciftler.append((syms[i], syms[j], round(float(corr[i, j]), 2)))
+    ciftler.sort(key=lambda x: -abs(x[2]))
+    hhi = float((w ** 2).sum()); etkin_n = (1.0 / hhi) if hhi > 0 else 0.0
+    ti = int(np.argmax(w)); top1 = (syms[ti], round(float(w[ti]) * 100, 1))
+    sektor_pay = {}
+    if sektorler:
+        for s, wi in zip(syms, w):
+            sek = sektorler.get(s, "?"); sektor_pay[sek] = sektor_pay.get(sek, 0.0) + float(wi)
+    en_sek = max(sektor_pay.items(), key=lambda x: x[1]) if sektor_pay else None
+    a = (dd_butce * k / port_vol) if port_vol > 1e-9 else 0.0
+    if lehte == "mevduat": a *= 0.5
+    a = max(0.0, min(1.0, a))
+    return {
+        "syms": syms,
+        "agirliklar": {s: round(float(wi) * 100, 1) for s, wi in zip(syms, w)},
+        "vol_bireysel": {s: round(float(v) * 100, 1) for s, v in zip(syms, vol_i)},
+        "portfoy_vol_pct": round(port_vol * 100, 1),
+        "agr_ort_vol_pct": round(agr_ort_vol * 100, 1),
+        "cesitlendirme": round(cesit, 2),
+        "korelasyon_ciftleri": ciftler,
+        "hhi": round(hhi, 3), "etkin_n": round(etkin_n, 1),
+        "en_buyuk_pozisyon": top1,
+        "sektor_pay": {kk: round(vv * 100, 1) for kk, vv in sektor_pay.items()},
+        "en_buyuk_sektor": (en_sek[0], round(en_sek[1] * 100, 1)) if en_sek else None,
+        "gun_sayisi": minlen,
+        "vol_hedef_hisse_pct": round(a * 100, 1),
+        "vol_hedef_nakit_pct": round((1 - a) * 100, 1),
+        "dd_butce_pct": dd_butce * 100, "k": k,
+    }
+
+
+# ══════════════════════════════════════════════════════════════
 # AKIS (gun-ici / intraday) — "su an ne oluyor" BETIMLEYICI metrikler
 # ══════════════════════════════════════════════════════════════
 # TUM metrikler BETIMLEYICIDIR: bugunu olcer, yarini TAHMIN ETMEZ.
@@ -729,6 +793,30 @@ def fetch_intraday():
                                 sub["Close"].values, sub["Volume"].values)
             if m:
                 out[s] = m
+        except Exception:
+            continue
+    return out
+
+def fetch_getiri_matrisi():
+    """Tum BIST icin 1 yillik gunluk KAPANIS serisi (pandas Series) dondurur.
+    Portfoy paneli secilen hisseleri ortak tarihe hizalayip getiriye cevirir.
+    yfinance yoksa/cekemezse bos dict -> panel 'veri yok' der (UYDURMA YOK)."""
+    try:
+        import yfinance as yf
+    except Exception:
+        return {}
+    syms = [s + ".IS" for s, _ in BIST]
+    try:
+        df = yf.download(syms, period="1y", interval="1d", group_by="ticker",
+                         auto_adjust=True, progress=False, threads=True)
+    except Exception:
+        return {}
+    out = {}
+    for s, _ in BIST:
+        try:
+            c = df[s + ".IS"]["Close"].dropna()
+            if len(c) >= 30:
+                out[s] = c
         except Exception:
             continue
     return out
@@ -1514,6 +1602,9 @@ def run_streamlit():
     @st.cache_data(ttl=300)
     def _akis(_surum=SURUM):
         return fetch_intraday()
+    @st.cache_data(ttl=900)
+    def _getiri_mat(_surum=SURUM):
+        return fetch_getiri_matrisi()
     html,data=build_html(veri=_veri(), akis=_akis())
     components.html(html,height=1320,scrolling=True)
 
@@ -1774,6 +1865,97 @@ def run_streamlit():
                                    "tek faydasi stop'unun normal dalgalanmanin icinde olup olmadigini gormek.")
                 st.info("Sistemin sana SOYLEMEDIGI: bu hisse cikar mi (~yazi-tura, edge yok). SOYLEDIGI: "
                         "ne kadar koy, nerede dur, belirsizlik ne kadar genis. Secim + katalizor sende.")
+    st.markdown("---")
+    st.subheader("\U0001F4E6 Portfoy Risk Paneli — 'tek hisse' degil 'tum kitap'")
+    st.caption("Profesyoneli amatorden ayiran katman. Birkac pozisyon gir: sistem TOPLAM "
+               "oynaklik, cesitlendirme, yogunlasma ve gizli tek-bahis (korelasyon) cikarir. "
+               "Hepsi BETIMLEME + RISK \u2014 'al/sat' veya getiri tahmini DEGIL.")
+    _adlar = {s["tk"]: s.get("ad", s["tk"]) for s in data["stocks"]}
+    _secenekler = [s["tk"] for s in data["stocks"]]
+    _secili = st.multiselect("Portfoydeki hisseler (2\u201310 onerilir)", _secenekler,
+                             format_func=lambda t: "{} \u2014 {}".format(t, _adlar.get(t, t)),
+                             key="pf_sec")
+    if _secili:
+        st.caption("Her hisse icin TL tutarini gir (agirliklar otomatik hesaplanir):")
+        _tutar = {}
+        _pc = st.columns(2)
+        for _i, _t in enumerate(_secili):
+            _tutar[_t] = _pc[_i % 2].number_input("{} (\u20BA)".format(_t), min_value=0.0,
+                                                   value=10000.0, step=1000.0, key="pf_tl_" + _t)
+        if st.button("Portfoy riskini cikar", key="pf_btn", use_container_width=True):
+            _gm = _getiri_mat()
+            if not _gm:
+                st.warning("Getiri verisi cekilemedi (yfinance). Birazdan tekrar dene \u2014 UYDURMUYORUZ.")
+            else:
+                import pandas as _pd
+                _ortak = [t for t in _secili if t in _gm]
+                if len(_ortak) < 1:
+                    st.warning("Secilen hisseler icin yeterli gecmis veri yok.")
+                else:
+                    _df = _pd.concat({t: _gm[t] for t in _ortak}, axis=1).dropna()
+                    _ret = _df.pct_change().dropna()
+                    _getiriler = {t: _ret[t].values for t in _ortak}
+                    pr = portfoy_riski(_getiriler, {t: _tutar[t] for t in _ortak},
+                                       lehte=data["rejim"]["lehte"])
+                    if not pr:
+                        st.warning("Hesaplanamadi \u2014 ortak tarihli yeterli veri yok (min 30 gun).")
+                    else:
+                        m1, m2, m3 = st.columns(3)
+                        m1.metric("Portfoy oynakligi", "%{}".format(pr["portfoy_vol_pct"]))
+                        m2.metric("Naif (korelasyonsuz)", "%{}".format(pr["agr_ort_vol_pct"]))
+                        m3.metric("Cesitlendirme", "{}x".format(pr["cesitlendirme"]))
+                        _kazanc = round(pr["agr_ort_vol_pct"] - pr["portfoy_vol_pct"], 1)
+                        if pr["cesitlendirme"] >= 1.25:
+                            st.success("Cesitlendirme ISE YARIYOR: korelasyon portfoy oynakligini "
+                                       "naif toplama gore %{} puan dusurdu (ayni risk, daha az capraz maruziyet).".format(_kazanc))
+                        elif pr["cesitlendirme"] <= 1.1:
+                            st.warning("Cesitlendirme NEREDEYSE YOK (cesit {}x): hisseler birlikte hareket "
+                                       "ediyor \u2014 bu aslinda GIZLI TEK BAHIS. Farkli davranan varlik eklemeden "
+                                       "risk gercekte dustugunu sanma.".format(pr["cesitlendirme"]))
+                        else:
+                            st.info("Kismi cesitlendirme (cesit {}x). Korelasyon orta.".format(pr["cesitlendirme"]))
+                        # Yogunlasma
+                        st.markdown("<div style='font-size:13px;margin-top:8px'>"
+                                    "<b>Yogunlasma</b> &middot; etkin hisse sayisi <b>{en}</b> "
+                                    "(HHI {hhi}) &middot; en buyuk pozisyon <b>{p0}</b> %{p1}</div>".format(
+                                        en=pr["etkin_n"], hhi=pr["hhi"],
+                                        p0=pr["en_buyuk_pozisyon"][0], p1=pr["en_buyuk_pozisyon"][1]),
+                                    unsafe_allow_html=True)
+                        if pr["etkin_n"] < 2 and len(_ortak) >= 3:
+                            st.caption("Etkin hisse sayisi 2'nin altinda: {} hisse girdin ama sermaye "
+                                       "neredeyse tek isimde toplanmis. Cesitlendirmenin faydasi sinirli.".format(len(_ortak)))
+                        # Korelasyon ciftleri
+                        if pr["korelasyon_ciftleri"]:
+                            st.markdown("<div style='font-size:12px;color:#9AA4A0;margin:8px 0 2px'>"
+                                        "Ikili korelasyon (1.00 = ayni hareket = tek bahis):</div>", unsafe_allow_html=True)
+                            _h = "<table style='width:100%;border-collapse:collapse;font-size:13px'>"
+                            for a, b, c in pr["korelasyon_ciftleri"][:6]:
+                                _renk = "#D2715A" if abs(c) >= 0.7 else ("#E0A458" if abs(c) >= 0.5 else "#9AA4A0")
+                                _h += ("<tr><td style='padding:2px 0'>{a} \u2013 {b}</td>"
+                                       "<td style='text-align:right;font-family:monospace;color:{r}'>{c:+.2f}</td></tr>").format(
+                                           a=a, b=b, c=c, r=_renk)
+                            _h += "</table>"
+                            st.markdown(_h, unsafe_allow_html=True)
+                            _yuksek = [p for p in pr["korelasyon_ciftleri"] if abs(p[2]) >= 0.7]
+                            if _yuksek:
+                                st.caption("Kirmizi ciftler (\u2265%70 korelasyon) birlikte iner/cikar \u2014 ayri "
+                                           "hisse gibi gorunup tek riski tasirlar. 'Neden ALMAMALIYIM' acisindan dikkat.")
+                        # Portfoy vol-hedef
+                        st.markdown("<div style='border-left:3px solid #4FB8A4;padding:10px 14px;"
+                                    "background:rgba(79,184,164,.06);border-radius:4px;margin-top:10px;font-size:13px'>"
+                                    "<b>Portfoy vol-hedefi</b> (dogrulanmis eksen) &middot; dusus butcesi %{dd}/gun, k={k}, "
+                                    "rejim <b>{rej}</b><br>Bu oynaklikta hedef dusus butcesini tutturmak icin "
+                                    "kabaca <b>%{h} hisse / %{n} nakit</b>.</div>".format(
+                                        dd=pr["dd_butce_pct"], k=pr["k"], rej=data["rejim"]["durus"],
+                                        h=pr["vol_hedef_hisse_pct"], n=pr["vol_hedef_nakit_pct"]),
+                                    unsafe_allow_html=True)
+                        st.caption("Vol-hedef = backtest'te DOGRULANAN tek eksen (drawdown'i butce icinde tutar). "
+                                   "Bu bir 'al' emri DEGIL; 'eger bu sepete girersen olculu agirlik su olur' der. "
+                                   "{} gunluk ortak veriyle hesaplandi.".format(pr["gun_sayisi"]))
+    else:
+        st.caption("Hisse secince panel acilir. Tek hisse de girebilirsin ama as\u0131l deger 2+ hissede "
+                   "(korelasyon + cesitlendirme orada gorunur).")
+
     st.markdown("---")
     st.subheader("\U0001F4D0 Kalibrasyon — sistem kendi sinyallerini siniyor")
     st.caption("Her sinyalin (akis yuklenmesi, tuzak, risk, MA kesisimi) ima ettigi yon "
