@@ -38,7 +38,7 @@ import json, datetime, math, pathlib
 import numpy as np
 
 OUT = "apex.html"
-SURUM = "v4.2"
+SURUM = "v4.3"
 TAHMIN_TAVAN = 40.0
 ATR_K_STOP = 2.0
 ATR_K_HEDEF = 3.0
@@ -767,6 +767,24 @@ def portfoy_riski(getiriler, agirliklar, sektorler=None, dd_butce=0.015, k=2.5, 
         "vol_hedef_nakit_pct": round((1 - a) * 100, 1),
         "dd_butce_pct": dd_butce * 100, "k": k,
     }
+
+
+def stres_maskesi(piyasa_getiri, alt_yuzde=25):
+    """En kotu 'alt_yuzde'%'lik piyasa gunlerinin boolean maskesi (dususte
+    korelasyon olcumu icin). piyasa_getiri: gunluk piyasa-vekili getiri dizisi.
+    Yetersiz gun -> None. Piyasa-vekili portfoyden BAGIMSIZ (tarafsiz stres tanimi)."""
+    pg = np.asarray(piyasa_getiri, float)
+    if pg.size < 40:
+        return None
+    esik = float(np.percentile(pg, alt_yuzde))
+    return pg <= esik
+
+def ort_korelasyon(korelasyon_ciftleri):
+    """Ikili korelasyon listesinden ortalama |korelasyon|. Bos -> None."""
+    if not korelasyon_ciftleri:
+        return None
+    vals = [abs(c) for _, _, c in korelasyon_ciftleri]
+    return round(sum(vals) / len(vals), 2) if vals else None
 
 
 # ══════════════════════════════════════════════════════════════
@@ -2234,6 +2252,46 @@ def run_streamlit():
                             if _yuksek:
                                 st.caption("Kirmizi ciftler (\u2265%70 korelasyon) birlikte iner/cikar \u2014 ayri "
                                            "hisse gibi gorunup tek riski tasirlar. 'Neden ALMAMALIYIM' acisindan dikkat.")
+                        # ── STRES korelasyonu: dususte cesitlendirme cokuyor mu? ──
+                        if len(_ortak) >= 2:
+                            try:
+                                _uni = _pd.DataFrame({t: _gm[t] for t in _gm}).pct_change()
+                                _piy = _uni.mean(axis=1, skipna=True).reindex(_ret.index).dropna()
+                                _ort_ret = _ret.reindex(_piy.index).dropna()
+                                _maske = stres_maskesi(_piy.loc[_ort_ret.index].values, 25)
+                            except Exception:
+                                _maske = None
+                            if _maske is not None and _maske.sum() >= 30:
+                                _rs = _ort_ret[_maske]
+                                _gs = {t: _rs[t].values for t in _ortak}
+                                pr_s = portfoy_riski(_gs, {t: _tutar[t] for t in _ortak},
+                                                     lehte=data["rejim"]["lehte"])
+                                if pr_s:
+                                    _kn = ort_korelasyon(pr["korelasyon_ciftleri"])
+                                    _ks = ort_korelasyon(pr_s["korelasyon_ciftleri"])
+                                    st.markdown("<div style='font-size:12px;color:#9AA4A0;margin:10px 0 2px'>"
+                                                "Stres testi \u2014 en kotu %25 piyasa gununde (cesitlendirme orada "
+                                                "ise yarar mi):</div>", unsafe_allow_html=True)
+                                    sc1, sc2 = st.columns(2)
+                                    sc1.metric("Cesitlendirme (sakin)", "{}x".format(pr["cesitlendirme"]))
+                                    sc2.metric("Cesitlendirme (dusus)", "{}x".format(pr_s["cesitlendirme"]),
+                                               delta="{:+.2f}".format(pr_s["cesitlendirme"] - pr["cesitlendirme"]),
+                                               delta_color="off")
+                                    if _kn is not None and _ks is not None:
+                                        st.caption("Ortalama korelasyon: sakin {} \u2192 dususte {}.".format(_kn, _ks))
+                                    _dus = pr["cesitlendirme"] - pr_s["cesitlendirme"]
+                                    if pr_s["cesitlendirme"] <= 1.1 or _dus >= 0.25:
+                                        st.markdown("<div style='font-size:13px;color:#D2715A;background:rgba(210,113,90,.08);"
+                                                    "border-left:3px solid #D2715A;padding:8px 12px;border-radius:4px;margin:4px 0'>"
+                                                    "\u26A0 Cesitlendirmen STRES altinda cokuyor: dususte hisseler "
+                                                    "birlikte hareket ediyor (korelasyon 1'e gidiyor). Sakin havadaki "
+                                                    "cesitlendirme yaniltici \u2014 cokuste hepsi ayni anda iner.</div>",
+                                                    unsafe_allow_html=True)
+                                    else:
+                                        st.caption("Cesitlendirme stres altinda da buyuk olcude korunuyor \u2014 "
+                                                   "isimler dususte tamamen birlikte hareket etmiyor. Iyi.")
+                                    st.caption("Piyasa-vekili: tum evrenin gunluk ortalamasi (portfoyden bagimsiz, "
+                                               "tarafsiz stres tanimi). {} stres gunuyle hesaplandi.".format(int(_maske.sum())))
                         # Portfoy vol-hedef
                         st.markdown("<div style='border-left:3px solid #4FB8A4;padding:10px 14px;"
                                     "background:rgba(79,184,164,.06);border-radius:4px;margin-top:10px;font-size:13px'>"
