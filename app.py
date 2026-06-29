@@ -38,7 +38,7 @@ import json, datetime, math, pathlib
 import numpy as np
 
 OUT = "apex.html"
-SURUM = "v3.9"
+SURUM = "v4.0"
 TAHMIN_TAVAN = 40.0
 ATR_K_STOP = 2.0
 ATR_K_HEDEF = 3.0
@@ -701,6 +701,15 @@ def portfoy_riski(getiriler, agirliklar, sektorler=None, dd_butce=0.015, k=2.5, 
     port_vol = float(np.sqrt(max(float(w @ cov @ w), 0.0))) * ann
     agr_ort_vol = float(w @ vol_i)
     cesit = (agr_ort_vol / port_vol) if port_vol > 1e-9 else 1.0
+    # Risk katkisi (RC): her varligin portfoy VARYANSINA % katkisi (toplam=100).
+    # RC_i = w_i * (cov @ w)_i / (w' cov w). Sermaye agirligindan FARKLI olabilir:
+    # yuksek vol/korelasyonlu pozisyon, kucuk sermaye payiyla buyuk risk tasiyabilir.
+    _pv = float(w @ cov @ w)
+    if _pv > 1e-15:
+        _rc = (w * (cov @ w)) / _pv
+    else:
+        _rc = w * 0.0
+    risk_katki = {s: round(float(r) * 100, 1) for s, r in zip(syms, _rc)}
     std = np.sqrt(np.diag(cov))
     with np.errstate(divide="ignore", invalid="ignore"):
         corr = cov / np.outer(std, std)
@@ -723,6 +732,7 @@ def portfoy_riski(getiriler, agirliklar, sektorler=None, dd_butce=0.015, k=2.5, 
         "syms": syms,
         "agirliklar": {s: round(float(wi) * 100, 1) for s, wi in zip(syms, w)},
         "vol_bireysel": {s: round(float(v) * 100, 1) for s, v in zip(syms, vol_i)},
+        "risk_katki": risk_katki,
         "portfoy_vol_pct": round(port_vol * 100, 1),
         "agr_ort_vol_pct": round(agr_ort_vol * 100, 1),
         "cesitlendirme": round(cesit, 2),
@@ -2088,6 +2098,32 @@ def run_streamlit():
                         if pr["etkin_n"] < 2 and len(_ortak) >= 3:
                             st.caption("Etkin hisse sayisi 2'nin altinda: {} hisse girdin ama sermaye "
                                        "neredeyse tek isimde toplanmis. Cesitlendirmenin faydasi sinirli.".format(len(_ortak)))
+                        # Sermaye vs RISK katkisi — "riskin ne kadari hangi pozisyondan"
+                        st.markdown("<div style='font-size:12px;color:#9AA4A0;margin:10px 0 2px'>"
+                                    "Riskin kaynagi (sermaye payi vs risk payi):</div>", unsafe_allow_html=True)
+                        _rh = ("<table style='width:100%;border-collapse:collapse;font-size:13px'>"
+                               "<tr style='color:#9AA4A0;font-size:11px'><td>hisse</td>"
+                               "<td style='text-align:right'>sermaye</td><td style='text-align:right'>risk</td></tr>")
+                        _rsiralı = sorted(pr["risk_katki"].items(), key=lambda x: -x[1])
+                        for _sym, _rk in _rsiralı:
+                            _wk = pr["agirliklar"].get(_sym, 0)
+                            _oran = (_rk / _wk) if _wk > 0 else 0
+                            _renk = "#D2715A" if _oran >= 1.5 else ("#E0A458" if _oran >= 1.2 else "#9AA4A0")
+                            _rh += ("<tr><td style='padding:2px 0'>{s}</td>"
+                                    "<td style='text-align:right;color:#9AA4A0'>%{w}</td>"
+                                    "<td style='text-align:right;font-family:monospace;color:{c}'>%{r}</td></tr>").format(
+                                        s=_sym, w=_wk, r=_rk, c=_renk)
+                        _rh += "</table>"
+                        st.markdown(_rh, unsafe_allow_html=True)
+                        _baskin = [(s, rk, pr["agirliklar"].get(s, 0)) for s, rk in _rsiralı
+                                   if pr["agirliklar"].get(s, 0) > 0 and rk / pr["agirliklar"][s] >= 1.5]
+                        if _baskin:
+                            _b = _baskin[0]
+                            st.caption("{} sermayenin %{}'i ama riskin %{}'i \u2014 risk burada toplanmis "
+                                       "(yuksek vol veya korelasyon). Sermaye 'cesitli' gorunse de risk degil.".format(
+                                           _b[0], _b[2], _b[1]))
+                        else:
+                            st.caption("Risk payi sermaye payina yakin \u2014 hicbir pozisyon riski tek basina domine etmiyor.")
                         # Korelasyon ciftleri
                         if pr["korelasyon_ciftleri"]:
                             st.markdown("<div style='font-size:12px;color:#9AA4A0;margin:8px 0 2px'>"
