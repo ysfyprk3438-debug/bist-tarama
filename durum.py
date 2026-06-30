@@ -2,95 +2,85 @@
 ═══════════════════════════════════════════════════════════════
 ║                                                               ║
 ║   📍 APEX — DURUM PANOSU                                       ║
-║   BURADAYIZ. Yeni oturumda ÖNCE BUNU OKU, sonra yol_haritasi. ║
+║   BURADAYIZ. Yeni oturumda ÖNCE BUNU OKU (sonra yol_haritasi).║
 ║                                                               ║
 ═══════════════════════════════════════════════════════════════
 
 Bu dosya projenin KONTROL NOKTASIDIR.
 Her geliştirme oturumunun SONUNDA güncellenir.
-Yeni sohbete başlarken Claude önce bunu okur → bağlamı alır.
-
-Repo: ysfyprk3438-debug/bist-tarama  (branch: main)
-Canlı kod: TEK DOSYA app.py  (Streamlit Cloud)
+Yeni bir sohbete başlarken Claude önce bunu okur → tüm bağlamı alır.
 """
 
 # ══════════════════════════════════════════════════════════════
 # ŞU AN NEREDEYİZ
 # ══════════════════════════════════════════════════════════════
-SURUM = "app.py v2.5"
-SON_GUNCELLEME = "Tek dosya kurumsal 'ölçüm aleti' arayüzü — Monte Carlo (#15) kapandı"
+SURUM = "v4.4"
+SON_GUNCELLEME = "Cihazdan bağımsız bulut kalıcılık (Google Sheets) canlı"
 
 SU_AN = {
-    "asama": "Canlı ve çalışıyor. app.py tek dosya, kendi HTML'ini taşıyor "
-             "(artık apex_omurga_v1.html şablonuna bağımlı DEĞİL).",
-    "siradaki_adim": "Risk Parity (#12) — bir sonraki yeşil aday.",
+    "asama": "Canlı. APEX 5 modlu arayüz + Sanal Borsa sayfası gerçek BIST verisiyle çalışıyor.",
+    "siradaki_adim": "apex_kare_prototip.html tasarımını gorsel_panel.py'ye portla "
+                     "(kare tile grid + tek ekran detay, APEX okuma dili: yönsüz betim + 1 yıllık sicil).",
     "bekleyen_karar": "Yok.",
-    "durustluk_cizgisi": "KORUNDU. Getiri tahmini ~yazı-tura, kanıtlanmış edge YOK. "
-                         "Canlı veri yoksa fiyat UYDURULMAZ. Yön tahmini reddedildi "
-                         "('akıllı para → seviye kırar' tipi drift KABUL EDİLMEDİ).",
+    "onemli_not": "Sanal cüzdan VE karar defteri artık Google Sheets'te (APEX HAFIZA). "
+                  "Telefon = laptop, aynı hafıza. Manuel sıfırlanana kadar kalıcı.",
 }
 
 # ══════════════════════════════════════════════════════════════
-# CANLI ARAYÜZ (app.py v2.5 — ne var)
+# FELSEFE (değişmez çekirdek)
 # ══════════════════════════════════════════════════════════════
-ARAYUZ = [
-    "Güven Kerterizi kadranı — başlık metriği 'sisteme ne kadar güvenmeli', sahte güven skoru değil.",
-    "Havuz tablosu — taranan hisseler.",
-    "Hisse Detay — üç sekme: Teknik / Bağlam / Sicil.",
-    "Kesişim: MA50/MA200 altın/ölüm grafikte işaretli + 'N gün önce' + dürüst post-kesişim medyanı.",
-    "  → Veri 2 yıl çekiliyor, grafik son 1 yılı gösteriyor.",
-    "Karar Çerçevesi: seçim KULLANICIDA. Sistem verir: poz büyüklüğü + ATR stop + "
-    "riskteki para + R/Ödül + senaryo. Cevap 'ne kadar / nereye kadar', 'AL' DEĞİL.",
-    "Monte Carlo: yönsüz (drift=0) belirsizlik konisi + stop'a değme olasılığı. "
-    "Kehanet değil — belirsizliğin genişliği.",
+FELSEFE = (
+    "Getiri tahmini REDDEDİLDİ — 15 dk gecikmeli perakende veriyle kanıtlanmış bir kenar yok. "
+    "Dürüst ve doğrulanmış eksen: RİSK YÖNETİMİ ve POZİSYON BÜYÜKLÜĞÜ. "
+    "Sistem bir 'risk pusulası' / karar-destek aracıdır, getiri kâhini değil. "
+    "Vol-hedefli pozisyon büyüklüğü (pozisyon.py) gerçek BIST verisinde doğrulandı: "
+    "gerçekleşen düşüşü bütçe içinde tuttu. Geri kalan her şey (teknik/momentum/temel seçim, "
+    "makro zamanlama) OOS ve plasebo testlerinde çöktü. "
+    "Dil kuralı: hiçbir çıktıda al/sat/tahmin/hedef yok. Her sinyal kendi SİCİLİNİ taşır."
+)
+
+# ══════════════════════════════════════════════════════════════
+# CANLI ALTYAPI (çalıştığı doğrulanmış)
+# ══════════════════════════════════════════════════════════════
+CANLI = [
+    "app.py — ana APEX sayfası (Pusula/Havuz/Trade/Defter/Nabız), embedded HTML",
+    "pages/01_Sanal_Borsa.py — sanal borsa, gerçek BIST verisi, native Streamlit",
+    "kalici.py — Google Sheets bulut kalıcılık (yukle/kaydet/sil/tablo_yaz)",
+    "  → Sheet: APEX HAFIZA · sayfalar: apex_durum + cuzdan_ozet",
+    "  → Servis hesabı: apex-yazici@apex-501017.iam.gserviceaccount.com (Editor)",
+    "pozisyon.py — vol-hedef sizing (k=2.5), DOĞRULANMIŞ değer ekseni",
+    "gunluk_log.py + gunluk.yml — otonom günlük ileri-test logger (ileri_gunluk.csv)",
+    "projektor.py + projektor.yml — Telegram boru hattı (64 hisse → Sonnet → Telegram)",
+    "makro_guncel.json — yarı-otomatik makro (politika 37.0, enflasyon 32.61)",
+    "temel_veri.json — 62 hisse temel veri",
+    "karar_defteri — artık BULUTTA (eski CSV bir kez migrate edildi)",
 ]
 
 # ══════════════════════════════════════════════════════════════
-# SON OTURUMDA NE YAPTIK (en yeni üstte)
+# BU OTURUMDA NE YAPTIK (en yeni üstte)
 # ══════════════════════════════════════════════════════════════
 GECMIS_OTURUMLAR = [
-    "#15 Monte Carlo kapandı: yönsüz belirsizlik konisi + stop'a değme olasılığı.",
-    "#10 kapandı: delisted temizliği + projektör koruma kabuğu.",
-    "app.py v1.9 → v2.5: tek dosyaya taşındı, kendi HTML'ini içinde taşıyor.",
-    "Kurumsal 'ölçüm aleti' arayüzü: Güven Kerterizi + Havuz + Detay(Teknik/Bağlam/Sicil).",
-    "Kesişim grafiği: altın/ölüm işareti + 'N gün önce' + post-kesişim medyanı; veri 2 yıl, grafik 1 yıl.",
-    "Karar Çerçevesi: poz/stop/riskteki para/R-Ödül/senaryo — 'AL' demeyen yapı.",
-    # --- daha eski (önceki mimari, arşiv) ---
-    "Doğrulanmış varlık: pozisyon vol-target — gerçek BIST'te MaxDD bütçe altında kaldı.",
-    "Honest core: hiçbir strateji OOS'ta mevduatı geçemedi; makro rejim placebo'da çöktü (beta).",
+    "Bulut kalıcılık (kalici.py): Google Sheets'e cihazdan bağımsız kayıt. "
+    "Sanal Borsa + karar defteri buluta taşındı. Telefon=laptop doğrulandı.",
+    "Güvenlik: servis hesabı anahtarı rotasyonu (eski silindi, yeni aktif).",
+    "Kullanılabilirlik: mobil navigasyon butonları, iOS ana ekran kısayolu "
+    "'APEX Pusula', UptimeRobot keep-alive (Streamlit uyumuyor).",
+    "— önceki oturumlar: ileri-test logger, projektör Telegram hattı, "
+    "vol-hedef sizing doğrulaması, plasebo/OOS denetimleri —",
 ]
 
 # ══════════════════════════════════════════════════════════════
-# İŞ KUYRUĞU (numaralı)
+# SIRADAKİ HEDEF
 # ══════════════════════════════════════════════════════════════
-IS_KUYRUGU = [
-    "#10  Delisted temizliği + projektör koruma kabuğu          → KAPANDI ✓",
-    "#15  Monte Carlo (yönsüz belirsizlik konisi)               → KAPANDI ✓",
-    "#12  Risk Parity                                           → SIRADAKİ yeşil aday",
-    "ForInvest AKD/takas manuel görsel arşivi                   → bekliyor",
-    "İleri-test (paper) birikimi — tek dürüst OOS               → sürüyor",
-]
-
-# ══════════════════════════════════════════════════════════════
-# DEPLOY (değişmeyen kural)
-# ══════════════════════════════════════════════════════════════
-DEPLOY = [
-    "Tek kaynak: GitHub repo ysfyprk3438-debug/bist-tarama, main. Gevşek dosya yükleme YOK.",
-    "Canlı kod tek dosya: app.py. GitHub web editör → app.py → Edit → Ctrl+A → sil → yapıştır → Commit.",
-    "Streamlit Cloud otomatik redeploy eder.",
-    ".github/workflows/ altına token YAZAMAZ → workflow dosyalarını Yusuf web UI'dan elle açar.",
-]
-
-# ══════════════════════════════════════════════════════════════
-# DEĞİŞMEZ İLKELER (dürüstlük çizgisi)
-# ══════════════════════════════════════════════════════════════
-ILKELER = [
-    "Başlık metriği = 'ne kadar güvenmeli', sahte güven değil.",
-    "Getiri tahmini ~yazı-tura; kanıtlanmış edge yok. Risk yönetimi çözülebilir problem.",
-    "Canlı veri yoksa fiyat uydurulmaz.",
-    "Yön tahmini (drift) reddedildi — Monte Carlo yönsüz.",
-    "Dürüst ≠ seyrek: gerçek tarihsel veri hem dürüst hem zengindir.",
-]
+SONRAKI_HEDEF = (
+    "gorsel_panel.py: apex_kare_prototip.html portu. 2 sütun kare tile grid "
+    "(sparkline arka plan) + slide-up tek ekran detay: tüm bilgi grafiğin üstünde "
+    "etiketli (zirve/dip callout, son fiyat vs ortalama, 20G ortalama uçta, "
+    "volatilite değişim işareti). Otomatik yapı tespiti (çift tepe/dip, "
+    "konsolidasyon bandı, yükselen/düşen kanal) amber overlay + borsa terimi caption. "
+    "KURAL: yalnız geometrik gözlem, yön/hedef YOK. Her okuma 1 yıllık sicilini taşır "
+    "(kaç kez yaşandı, sonraki ~10 günde ▲kaç/▼kaç, isabet ~%). İsabet 40-60 ise nötr gri."
+)
 
 
 def durum_metni():
@@ -98,10 +88,10 @@ def durum_metni():
     s.append(f"\nSÜRÜM: {SURUM} — {SON_GUNCELLEME}")
     s.append(f"\nŞU AN: {SU_AN['asama']}")
     s.append(f"SIRADAKİ: {SU_AN['siradaki_adim']}")
-    s.append(f"\nDÜRÜSTLÜK ÇİZGİSİ:\n  {SU_AN['durustluk_cizgisi']}")
-    s.append("\nİŞ KUYRUĞU:")
-    for a in IS_KUYRUGU:
-        s.append(f"  {a}")
+    s.append(f"\nCANLI ALTYAPI:")
+    for c in CANLI:
+        s.append(f"  {c}")
+    s.append(f"\nSONRAKİ HEDEF:\n  {SONRAKI_HEDEF}")
     return "\n".join(s)
 
 
