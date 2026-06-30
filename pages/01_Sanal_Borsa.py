@@ -1,4 +1,4 @@
-# surum 4 — APEX Sanal Borsa: native Streamlit, BULUT kalici cuzdan (Google Sheets, cihazdan bagimsiz)
+# surum 5 — APEX Sanal Borsa: native Streamlit, BULUT kalici cuzdan (Google Sheets). Havuz=BIST100.
 import os
 import json
 import math
@@ -9,23 +9,32 @@ import streamlit as st
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(ROOT))
-import kalici as kl  # bulut kalicilik omurgasi (Google Sheets)
-STATE_FILE = ROOT / "cuzdan_durum.json"  # yedek/gecis icin durabilir, artik kullanilmiyor
-APEX_ANAHTAR = "sanal_borsa"  # bulutta cuzdanin anahtari
+import kalici as kl
+STATE_FILE = ROOT / "cuzdan_durum.json"
+APEX_ANAHTAR = "sanal_borsa"
 
-TK_DEF = ["THYAO", "AKBNK", "SASA", "EREGL", "ASELS", "BIMAS", "TUPRS", "FROTO"]
+TK_DEF = [
+    "AEFES","AGHOL","AKBNK","AKCNS","AKFGY","AKSA","AKSEN","ALARK","ALFAS","ARCLK",
+    "ASELS","ASTOR","BERA","BIMAS","BRSAN","BRYAT","BUCIM","CCOLA","CIMSA","DOAS",
+    "DOHOL","ECILC","EGEEN","EKGYO","ENJSA","ENKAI","EREGL","EUPWR","FROTO","GARAN",
+    "GESAN","GUBRF","HALKB","HEKTS","ISCTR","ISGYO","ISMEN","IZMDC","KAYSE","KCHOL",
+    "KONTR","KONYA","KORDS","KRDMD","MAVI","MGROS","MIATK","ODAS",
+    "OTKAR","OYAKC","PETKM","PGSUS","PSGYO","QUAGR","SAHOL","SASA","SISE","SKBNK",
+    "SMRTG","SOKM","TAVHL","TCELL","THYAO","TKFEN","TOASO","TTKOM","TTRAK","TUKAS",
+    "TUPRS","ULKER","VAKBN","VESBE","VESTL","YKBNK","ZOREN","ALBRK","ANSGR","ARDYZ",
+    "BFREN","CANTE","CWENE","DAPGM","ENERY","FENER","GENIL","GLYHO","IZINS","KMPUR",
+    "KZBGY","MPARK","PAPIL","REEDR","TABGD","TSKB","TUREX","YEOTK","YYLGD","ZRGYO",
+]
 AY = ["Oca", "Sub", "Mar", "Nis", "May", "Haz", "Tem", "Agu", "Eyl", "Eki", "Kas", "Ara"]
 SON = 10
 REB = 21
 DEP_D = 0.45 / 252.0
 COM = 0.002
 
-D = {}  # PR, MA, MA50, RSI, idxLvl, N, TK, DLAB
+D = {}
 
-# ---------------- veri ----------------
 def _synthetic(n, base, amp, ph, drift):
     a = []
-    nw = 0.0
     for i in range(n):
         t = i / (n - 1)
         wave = 1 + amp * math.sin(t * (7 + ph)) + 0.05 * math.sin(t * 23)
@@ -33,20 +42,31 @@ def _synthetic(n, base, amp, ph, drift):
     return a
 
 def fetch_real(kodlar):
+    """BIST100'u PARALEL ceker; 100 hissede tarih hizalamasini saglamlastirir."""
     import pandas as pd
     from veri import veri_al
-    seri = {}
-    for k in kodlar:
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _cek(k):
         try:
             df, _ = veri_al(k, gun=430, min_gun=120, aralik="1d")
             if df is not None and len(df) >= 120:
-                seri[k] = df["Close"]
+                return k, df["Close"]
         except Exception:
             pass
+        return k, None
+
+    seri = {}
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        for k, ser in ex.map(_cek, kodlar):
+            if ser is not None:
+                seri[k] = ser
     if len(seri) < 2:
         return None
-    mat = pd.DataFrame(seri).dropna()
-    if len(mat) < 120:
+    mat = pd.DataFrame(seri)
+    mat = mat.dropna(axis=1, thresh=int(len(mat) * 0.85))
+    mat = mat.ffill().bfill().dropna()
+    if len(mat) < 120 or mat.shape[1] < 2:
         return None
     mat = mat.tail(260)
     kodlar2 = [k for k in kodlar if k in mat.columns]
@@ -91,7 +111,6 @@ def build(data):
     D["idxLvl"] = idx
     D["D0"] = max(130, D["N"] - 90)
 
-# ---------------- analiz matematigi ----------------
 def vol_at(PX, t):
     rr = [PX[i] / PX[i - 1] - 1 for i in range(max(1, t - 60), t)]
     if not rr: return 0.3
@@ -129,7 +148,7 @@ def rsi_ev(k):
     return up, dn
 
 def track(k, evs):
-    PX = D["PR"][k]; rows = []; conf = 0; tot = 0; cm = []; xm = []
+    PX = D["PR"][k]; conf = 0; tot = 0; cm = []; xm = []
     for (i, d) in evs:
         if i + SON < D["N"]:
             r = (PX[i + SON] / PX[i] - 1) * 100
@@ -178,6 +197,17 @@ def score_full(k):
     elif uyum <= 50 - m: band = ("ters", "dn")
     else: band = ("yazi-tura", "neu")
     return {"uyum": uyum, "yon": yon, "Tt": Tt, "m": m, "band": band, "ev": ev}
+
+def havuz_scores():
+    """100 hisse score_full pahalidir; ayni gun icinde tekrar hesaplama (cache)."""
+    s_day = st.session_state.get("apex", {}).get("day")
+    cache = st.session_state.get("_hscore")
+    if cache and cache[0] == (s_day, D["N"], D["NST"]):
+        return cache[1]
+    arr = sorted([(k, score_full(k)) for k in range(D["NST"])],
+                 key=lambda o: o[1]["uyum"], reverse=True)
+    st.session_state["_hscore"] = ((s_day, D["N"], D["NST"]), arr)
+    return arr
 
 def reading_defs(k):
     PX = D["PR"][k]; mm = crM(k); pm = crP(k); up, dn = rsi_ev(k)
@@ -232,7 +262,6 @@ def reading_defs(k):
     Dd.sort(key=lambda r: r["last"], reverse=True)
     return Dd
 
-# ---------------- cuzdan ----------------
 def init_state():
     d0 = D.get("D0", 120)
     return dict(day=d0, startDay=d0, cash=0.0, mevduat=0.0, posM={}, posA={}, ledger=[],
@@ -343,11 +372,10 @@ def deltas(s):
                 naif=(m / (s["naifGhost"] or 1) - 1) * 100,
                 idx=(m / (idx_ghost(s) or 1) - 1) * 100)
 
-# ---------------- kalicilik (BULUT — cihazdan bagimsiz) ----------------
 def load_state():
     if "apex" in st.session_state:
         return st.session_state["apex"]
-    s = kl.yukle(APEX_ANAHTAR, None)   # Google Sheets'ten getir
+    s = kl.yukle(APEX_ANAHTAR, None)
     if not s or "day" not in s:
         s = init_state()
     if s["day"] > D["N"] - 1: s["day"] = D["N"] - 1
@@ -357,10 +385,9 @@ def load_state():
 
 def save_state(s):
     st.session_state["apex"] = s
-    kl.kaydet(APEX_ANAHTAR, s)         # Google Sheets'e yaz (kalici)
+    kl.kaydet(APEX_ANAHTAR, s)
 
 def _ozet_yaz(s):
-    """Google Sheet'te insan-okur ayna (telefonda gozle bak). Best-effort."""
     try:
         basliklar = ["Bolum", "Kod", "Lot", "Guncel", "Deger_TL"]
         satirlar = []
@@ -382,13 +409,11 @@ def _ozet_yaz(s):
     except Exception:
         pass
 
-# ---------------- bicim ----------------
 def ftl(n): return "₺" + f"{round(n):,}".replace(",", ".")
 def fsig(n):
     return ("" if n >= 0 else "−") + "₺" + f"{round(abs(n)):,}".replace(",", ".")
 def dl(i): return D["DLAB"][min(max(i, 0), D["N"] - 1)]
 
-# ---------------- HTML ----------------
 def sparkline(k, day, color):
     PX = D["PR"][k][max(0, day - 80):day + 1]
     lo = min(PX); hi = max(PX); rng = (hi - lo) or 1
@@ -475,9 +500,6 @@ def trace_svg(k, day, S, gUp, gLo):
     s.append(f'<path d="{d}" fill="none" stroke="{fc}" stroke-width="1.6"/><circle cx="{xT(traj[-1][0]):.1f}" cy="{yV(cur):.1f}" r="3" fill="{fc}"/><text x="{xT(traj[-1][0])+5:.1f}" y="{yV(cur)+3:.1f}" font-family="monospace" font-size="8" fill="{fc}" font-weight="600">%{cur:.0f}</text></svg>')
     return "".join(s), dict(tmin=tmin, tmax=tmax, tavg=tavg, cur=cur, m=S["m"])
 
-# kalan HTML uretimi UI icinde (st.markdown). Burada test edilebilir saf parcalar bitti.
-
-# ---------------- ek HTML uretimi ----------------
 def durum_html(s, k):
     yvol = vol_at(D["PR"][k], s["day"])
     ortG = (price(s, k) / D["MA"][k][s["day"]] - 1) * 100
@@ -549,7 +571,7 @@ def coaching(s):
     dd = deltas(s)
     if not dd:
         return [("◆", "neu", "<b>Basla:</b> Cuzdana sanal para yukle. Sonra hisse al ya da otomatigi ac.")]
-    n = []; ret = (tot_val(s) / s["deposited"] - 1) * 100 if s["deposited"] else 0
+    n = []
     if dd["naif"] > 0: n.append(("✓", "up", f'<b>Iyi yondesin.</b> Naif halinden +%{dd["naif"]:.1f} ondesin — risk yonetimi isini yapiyor.'))
     else: n.append(("!", "dn", "<b>Naif halin su an onde.</b> Tek donem; disiplinin degeri kotu gunlerde belli olur."))
     if dd["dep"] < 0: n.append(("⚠", "am", f'<b>Dikkat.</b> Param tumuyle mevduatta dursaydi %{abs(dd["dep"]):.1f} fazlasi olurdu. Daha cok mevduat dusun.'))
@@ -566,9 +588,12 @@ CSS = """
 .block-container{padding:10px 12px 60px!important;max-width:480px!important;}
 section.main>div{padding-top:0!important;}
 html,body,[class*="css"]{font-family:'Hanken Grotesk',sans-serif;color:#E8E4D8;}
-.stButton>button{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;background:#11181F;color:#E8E4D8;border:1px solid rgba(232,228,216,.14);border-radius:9px;padding:7px 4px;width:100%;}
+.stButton>button{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;background:#11181F;color:#E8E4D8;border:1px solid rgba(232,228,216,.14);border-radius:9px;padding:7px 2px;width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .stButton>button:hover{border-color:rgba(45,212,191,.4);color:#2DD4BF;}
 .stButton>button[kind="primary"]{background:rgba(45,212,191,.1);border-color:rgba(45,212,191,.4);color:#2DD4BF;}
+div[data-testid="stHorizontalBlock"]{flex-wrap:nowrap!important;gap:5px!important;}
+div[data-testid="stHorizontalBlock"]>div[data-testid="stColumn"],
+div[data-testid="stHorizontalBlock"]>div[data-testid="column"]{min-width:0!important;flex:1 1 0!important;width:auto!important;}
 div[data-testid="stNumberInput"] input{font-family:'IBM Plex Mono',monospace;background:#06080B;color:#E8E4D8;border:1px solid rgba(232,228,216,.14);}
 .ax{font-family:'IBM Plex Mono',monospace;}
 .top{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
@@ -646,7 +671,7 @@ h3.hh{font-family:'Archivo';font-weight:800;font-size:22px;margin:2px 0;}
 
 def H(html): st.markdown(html, unsafe_allow_html=True)
 
-@st.cache_data(ttl=3600, show_spinner="Gercek BIST verisi cekiliyor...")
+@st.cache_data(ttl=3600, show_spinner="Gercek BIST verisi cekiliyor (BIST100, ilk acilis 30-60 sn)...")
 def cached_data(kodlar):
     return fetch_real(kodlar)
 
@@ -667,7 +692,7 @@ def main():
     build(data)
     s = load_state()
 
-    H('<div class="top"><span class="h1">APEX</span><span class="badge">' + ("SANAL · GERCEK VERI" if real else "SANAL · SENTETIK") + '</span></div>')
+    H('<div class="top"><span class="h1">APEX</span><span class="badge">' + (f"BIST{D['NST']} · GERCEK VERI" if real else "SANAL · SENTETIK") + '</span></div>')
     _renk, _yazi = (("#34d399", "☁️ Bulut kalici · her cihazda ayni cuzdan") if kl.BULUT_AKTIF
                     else ("#fbbf24", "⚠️ Yerel mod · bulut bagli degil (REHBER_KALICILIK)"))
     H(f'<div style="text-align:center;font-size:0.72rem;color:{_renk};margin:-2px 0 8px">{_yazi}</div>')
@@ -704,8 +729,8 @@ def main():
     elif view == "cuzdan": v_cuzdan(s)
 
 def v_havuz(s):
-    H('<div class="warnb"><b>Havuz — okuma-uygunlugu skoruna gore sirali.</b> AL listesi DEGIL: skor "okumalar gecmiste ne kadar tuttu" demek. Cogu hisse ~%50 (yazi-tura).</div>')
-    arr = sorted([(k, score_full(k)) for k in range(D["NST"])], key=lambda o: o[1]["uyum"], reverse=True)
+    H('<div class="warnb"><b>Havuz — BIST100, okuma-uygunlugu skoruna gore sirali.</b> AL listesi DEGIL: skor "okumalar gecmiste ne kadar tuttu" demek. Cogu hisse ~%50 (yazi-tura).</div>')
+    arr = havuz_scores()
     cols = st.columns(2)
     for idx, (k, S) in enumerate(arr):
         col = cols[idx % 2]
@@ -732,15 +757,18 @@ def v_hisse(s):
     H('<div class="lbl" style="text-align:center">sinyal/hedef/al-sat yok · her okuma kendi sicilini tasir</div>')
 
 def v_islem(s):
-    H('<div class="card"><div class="sec">ISLEM · MANUEL AL-SAT</div>')
-    for k in range(D["NST"]):
+    H('<div class="card"><div class="sec">ISLEM · MANUEL AL-SAT (BIST100)</div>')
+    held = set(int(k) for k, p in s["posM"].items() if p["qty"] > 0)
+    sirali = sorted(range(D["NST"]), key=lambda k: (k not in held, D["TK"][k]))
+    for k in sirali:
         cg = today_pct(s, k); cgc = "up" if cg >= 0 else "dn"
-        held = str(k) in s["posM"] and s["posM"][str(k)]["qty"] > 0
-        H(f'<div class="trrow"><span class="tk">{D["TK"][k]}</span><span class="px">{ftl(price(s,k))}</span><span class="cg {cgc}">{"▲%" if cg>=0 else "▼%"}{abs(cg):.1f}</span></div>')
+        h_ = k in held
+        tag = ' <span class="srctag tagM">elde</span>' if h_ else ''
+        H(f'<div class="trrow"><span class="tk">{D["TK"][k]}</span><span class="px">{ftl(price(s,k))}</span><span class="cg {cgc}">{"▲%" if cg>=0 else "▼%"}{abs(cg):.1f}</span>{tag}</div>')
         cc = st.columns([1.4, 1, 1])
         amt = cc[0].number_input("tutar", min_value=0, step=1000, key=f"amt{k}", label_visibility="collapsed", placeholder="₺")
         if cc[1].button("AL", key=f"buy{k}", type="primary"): buy_m(s, k, amt); save_state(s); st.rerun()
-        if held:
+        if h_:
             if cc[2].button("SAT", key=f"sell{k}"): sell_m(s, k); save_state(s); st.rerun()
     H('</div>')
     H(f'<div class="card"><div class="sec">MANUEL MEVDUAT</div><div class="lbl" style="line-height:1.5;margin-bottom:8px">Nakdini elle mevduata koy, faiz islesin (%45/yil). Mevduat: <b class="am">{ftl(s["mevduat"])}</b></div>')
@@ -787,6 +815,7 @@ def v_muhasebe(s):
                  ("Manuel toplam", ftl(pv(s, s["posM"]) + s["mevduat"]))]))
     elif s["acctTab"] == "oto":
         H('<div class="sec" style="border:0;margin:4px 2px">OTOMATIK DEFTER · APEX</div>')
+        H('<div class="warnb" style="margin-bottom:10px"><b>Oto nasil calisir:</b> Yon TAHMIN ETMEZ. 20 gunluk ortalamasinin USTUNDEKI hisseleri secer (basit trend filtresi), sermayenin ~%50&#39;sini bunlara OYNAKLIGA gore dagitir (sakin hisseye cok, oynak hisseye az), ~21 islem gununde bir yeniden dengeler. 20G altina dusen oto-pozisyonu satar. Bu "al-sat kahini" degil; <b>vol-target risk dengesi</b> — APEX&#39;in dogrulanmis ekseni. Trend filtresinin (20G ustu) kendisi kanitlanmis bir kazanc kaynagi DEGIL; yari sermaye hep nakitte/guvende tutulur.</div>')
         H(block([("APEX pozisyon", ftl(pv(s, s["posA"]))),
                  ("Gerceklesen K/Z", fsig(s["realizedA"]), "up" if s["realizedA"] >= 0 else "dn"),
                  ("Gerceklesmemis K/Z", fsig(unrealA), "up" if unrealA >= 0 else "dn"),
@@ -811,7 +840,7 @@ def v_muhasebe(s):
     h += "</div>"; H(h)
 
 def v_cuzdan(s):
-    _ozet_yaz(s)  # Google Sheet'teki gozle-okunur ozeti tazele
+    _ozet_yaz(s)
     dd = deltas(s); mine = tot_val(s)
     H('<div class="warnb"><b>Sanal egitim hesabi.</b> Gercek para yok. Amac: riski, disiplini, kaybetmemeyi gercek veriyle ogrenmek.</div>')
     h = f'<div class="card"><div class="lbl">SANAL PORTFOY DEGERI</div><div class="bigval {"up" if mine>=s["deposited"] else "dn"}">{ftl(mine)}</div><div class="lbl" style="margin-top:5px">nakit {ftl(s["cash"])} · mevduat {ftl(s["mevduat"])} · hisse {ftl(pv(s,s["posM"])+pv(s,s["posA"]))}</div>'
@@ -830,7 +859,7 @@ def v_cuzdan(s):
     with st.expander("Cuzdani sifirla"):
         st.caption("Tum islemler, pozisyonlar ve mevduat silinir. Geri alinamaz.")
         if st.button("Evet, sifirla", key="reset"):
-            kl.sil(APEX_ANAHTAR)  # buluttan da sil
+            kl.sil(APEX_ANAHTAR)
             try: STATE_FILE.unlink()
             except Exception: pass
             st.session_state["apex"] = init_state(); st.rerun()
