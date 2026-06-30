@@ -1,4 +1,4 @@
-# surum 6 — APEX Sanal Borsa: BIST100 + Kural-Tabanli Islem Plani Motoru (yonsuz, sicilli).
+# surum 7 — APEX Sanal Borsa: BIST100 + Kural Motoru + Oto-Simulasyon (kural-tetikli gir/cik).
 import os
 import json
 import math
@@ -490,20 +490,43 @@ def sell_m(s, k):
 
 def bull(s): return [k for k in range(D["NST"]) if D["PR"][k][s["day"]] > D["MA"][k][s["day"]]]
 
-def apex_reb(s):
-    base = s["cash"] + pv(s, s["posA"]); bl = bull(s); tgt = {}
-    if bl:
-        tw = {}; ss = 0.0
-        for k in bl:
-            iv = 1 / max(vol_at(D["PR"][k], s["day"]), 0.05); tw[k] = iv; ss += iv
-        for k in bl: tgt[str(k)] = base * 0.5 * tw[k] / ss
+def oto_cikis_kontrol(s):
+    """Her gun: oto pozisyonda stop/gecersizlik veya hedef tetiklenince TAM cik. Risk gunluk korunur."""
     for k in list(s["posA"].keys()):
-        if k not in tgt: _sell(s, s["posA"], k, 1.0, "A")
-    for k, tv in tgt.items():
-        cur = s["posA"][k]["qty"] * price(s, k) if k in s["posA"] else 0
+        pos = s["posA"][k]; f = price(s, k); cikis = None
+        if pos.get("stop") and f <= pos["stop"]: cikis = "stop"
+        elif pos.get("hedef") and f >= pos["hedef"]: cikis = "hedef"
+        if cikis:
+            net = _sell(s, s["posA"], k, 1.0, "A")
+            if net is not None:
+                logtx(s, type=("Oto STOP cikis" if cikis == "stop" else "Oto HEDEF cikis"),
+                      k=int(k), price=f, amt=net, src="A")
+
+def apex_reb(s):
+    """KURAL-TABANLI oto dengeleme: GIRIS_AKTIF evrenine vol-target ile %50 sermaye dagit.
+    Yon tahmini yok — kural motorunun simule edecegi aksiyon. Giris aninda stop/hedef saklanir."""
+    gun = s["day"]
+    evren = [k for k in range(D["NST"]) if plan_uret(k, gun)["durum"] == "GIRIS_AKTIF"]
+    # kural artik giris demiyorsa (evren disi) oto pozisyonu kapat
+    for k in list(s["posA"].keys()):
+        if int(k) not in evren:
+            net = _sell(s, s["posA"], k, 1.0, "A")
+            if net is not None:
+                logtx(s, type="Oto denge cikis", k=int(k), price=price(s, k), amt=net, src="A")
+    if not evren:
+        logtx(s, type="Oto: giris bolgesinde hisse yok", amt=0, src="A"); return
+    base = s["cash"] + pv(s, s["posA"]); tw = {}; ss = 0.0
+    for k in evren:
+        iv = 1 / max(vol_at(D["PR"][k], gun), 0.05); tw[k] = iv; ss += iv
+    for k in evren:
+        kk = str(k); tv = base * 0.5 * tw[k] / ss
+        cur = s["posA"][kk]["qty"] * price(s, k) if kk in s["posA"] else 0
         diff = tv - cur
-        if diff > 50: _buy(s, s["posA"], k, min(diff, s["cash"] / (1 + COM) - 1))
-    logtx(s, type="APEX otomatik dengeledi", amt=0, src="A")
+        if diff > 50:
+            if _buy(s, s["posA"], k, min(diff, s["cash"] / (1 + COM) - 1)):
+                p = plan_uret(k, gun)
+                s["posA"][kk]["stop"] = p["stop"]; s["posA"][kk]["hedef"] = p["hedef"]
+    logtx(s, type="Oto kural dengeledi", amt=0, src="A")
 
 def advance(s, days):
     for _ in range(days):
@@ -518,7 +541,9 @@ def advance(s, days):
                 nr = DEP_D
             s["naifGhost"] *= (1 + nr)
         s["day"] += 1
-        if s["auto"] and s["started"] and (s["day"] - s["startDay"]) % REB == 0: apex_reb(s)
+        if s["auto"] and s["started"]:
+            oto_cikis_kontrol(s)  # HER gun risk kontrol (stop/hedef)
+            if (s["day"] - s["startDay"]) % REB == 0: apex_reb(s)  # 21 gunde bir giris taramasi
 
 def deltas(s):
     if not s["started"]: return None
@@ -969,7 +994,10 @@ def v_pozisyon(s):
     for (k, p, src) in allp:
         avg = p["cost"] / p["qty"]; curp = price(s, k); val = p["qty"] * curp; pnl = val - p["cost"]; pp = (curp / avg - 1) * 100
         tag = "tagM" if src == "M" else "tagA"
-        H(f'<div class="pos"><span class="tk">{D["TK"][k]}<span class="srctag {tag}">{"manuel" if src=="M" else "oto"}</span></span><div class="mid">{p["qty"]:.1f} ad · ort {ftl(avg)}<br>{ftl(val)}</div><span class="pl {"up" if pnl>=0 else "dn"}">{fsig(pnl)}<br><span class="lbl">{"+" if pp>=0 else "−"}%{abs(pp):.1f}</span></span></div>')
+        sh = ""
+        if src == "A" and p.get("stop"):
+            sh = f'<br><span class="lbl">stop ₺{p["stop"]:.2f} · hedef ₺{p["hedef"]:.2f}</span>'
+        H(f'<div class="pos"><span class="tk">{D["TK"][k]}<span class="srctag {tag}">{"manuel" if src=="M" else "oto"}</span></span><div class="mid">{p["qty"]:.1f} ad · ort {ftl(avg)}<br>{ftl(val)}{sh}</div><span class="pl {"up" if pnl>=0 else "dn"}">{fsig(pnl)}<br><span class="lbl">{"+" if pp>=0 else "−"}%{abs(pp):.1f}</span></span></div>')
     H('</div>')
     H(f'<div class="card"><div class="acrow"><span class="k">Nakit</span><span>{ftl(s["cash"])}</span></div><div class="acrow"><span class="k">Mevduat</span><span class="am">{ftl(s["mevduat"])}</span></div><div class="acrow" style="border-bottom:0"><span class="k">Toplam portfoy</span><span class="{"up" if tot_val(s)>=s["deposited"] else "dn"}">{ftl(tot_val(s))}</span></div></div>')
 
@@ -995,7 +1023,7 @@ def v_muhasebe(s):
                  ("Manuel toplam", ftl(pv(s, s["posM"]) + s["mevduat"]))]))
     elif s["acctTab"] == "oto":
         H('<div class="sec" style="border:0;margin:4px 2px">OTOMATIK DEFTER · APEX</div>')
-        H('<div class="warnb" style="margin-bottom:10px"><b>Oto nasil calisir:</b> Yon TAHMIN ETMEZ. 20 gunluk ortalamasinin USTUNDEKI hisseleri secer (basit trend filtresi), sermayenin ~%50&#39;sini bunlara OYNAKLIGA gore dagitir (sakin hisseye cok, oynak hisseye az), ~21 islem gununde bir yeniden dengeler. 20G altina dusen oto-pozisyonu satar. Bu "al-sat kahini" degil; <b>vol-target risk dengesi</b> — APEX&#39;in dogrulanmis ekseni. Trend filtresinin (20G ustu) kendisi kanitlanmis bir kazanc kaynagi DEGIL; yari sermaye hep nakitte/guvende tutulur.</div>')
+        H('<div class="warnb" style="margin-bottom:10px"><b>Oto nasil calisir (kural-tabanli):</b> Yon TAHMIN ETMEZ. Kural motorunun <b>"Giris Bolgesi Aktif"</b> dedigi hisselere girer; pozisyonu <b>oynakliga gore</b> boyutlar (vol-target), sermayenin ~%50&#39;sini dagitir, yarisi nakitte/guvende kalir. Giris aninda stop ve hedef sabitlenir. <b>Her gun</b> stop/gecersizlik veya hedef tetiklenince cikar. ~21 gunde bir giris bolgesini yeniden tarar. Her islem deftere yazilir. Bu canli piyasa degil — <b>kurallarimin bu veride SIMULE edecegi aksiyon.</b></div>')
         H(block([("APEX pozisyon", ftl(pv(s, s["posA"]))),
                  ("Gerceklesen K/Z", fsig(s["realizedA"]), "up" if s["realizedA"] >= 0 else "dn"),
                  ("Gerceklesmemis K/Z", fsig(unrealA), "up" if unrealA >= 0 else "dn"),
