@@ -1865,6 +1865,13 @@ def run_streamlit():
     st.set_page_config(page_title="APEX",page_icon="\U0001F9ED",layout="centered")
     st.markdown("<style>#MainMenu,header,footer{visibility:hidden}.block-container{padding-top:1rem;max-width:1040px}</style>",
                 unsafe_allow_html=True)
+    # ── Sanal Borsa'ya hizli gecis (telefonda tek dokunus, kenar cubugu gerekmez) ──
+    st.markdown(
+        "<a href='/Sanal_Borsa' target='_self' style='display:block;text-align:center;"
+        "background:#1f6f63;color:#eafff8;font-weight:700;padding:14px;border-radius:10px;"
+        "text-decoration:none;margin:0 0 14px;font-size:1.05rem;border:1px solid #2e8c7c'>"
+        "\U0001F4BC Sanal Borsa'ya ge\u00e7 \u2192</a>",
+        unsafe_allow_html=True)
     @st.cache_data(ttl=900)
     def _veri(_surum=SURUM):
         return fetch_bist()
