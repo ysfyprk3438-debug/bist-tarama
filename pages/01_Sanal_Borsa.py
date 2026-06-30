@@ -1,4 +1,4 @@
-# surum 5 — APEX Sanal Borsa: native Streamlit, BULUT kalici cuzdan (Google Sheets). Havuz=BIST100.
+# surum 6 — APEX Sanal Borsa: BIST100 + Kural-Tabanli Islem Plani Motoru (yonsuz, sicilli).
 import os
 import json
 import math
@@ -23,7 +23,7 @@ TK_DEF = [
     "SMRTG","SOKM","TAVHL","TCELL","THYAO","TKFEN","TOASO","TTKOM","TTRAK","TUKAS",
     "TUPRS","ULKER","VAKBN","VESBE","VESTL","YKBNK","ZOREN","ALBRK","ANSGR","ARDYZ",
     "BFREN","CANTE","CWENE","DAPGM","ENERY","FENER","GENIL","GLYHO","IZINS","KMPUR",
-    "KZBGY","MPARK","PAPIL","REEDR","TABGD","TSKB","TUREX","YEOTK","YYLGD","ZRGYO",
+    "MPARK","PAPIL","REEDR","TABGD","TSKB","TUREX","YEOTK","YYLGD","ZRGYO",
 ]
 AY = ["Oca", "Sub", "Mar", "Nis", "May", "Haz", "Tem", "Agu", "Eyl", "Eki", "Kas", "Ara"]
 SON = 10
@@ -208,6 +208,161 @@ def havuz_scores():
                  key=lambda o: o[1]["uyum"], reverse=True)
     st.session_state["_hscore"] = ((s_day, D["N"], D["NST"]), arr)
     return arr
+
+# ================= KURAL-TABANLI ISLEM PLANI MOTORU =================
+# Yon TAHMIN ETMEZ. Sabit esiklerin mekanik ciktisi + bu hissedeki gecmis SICIL.
+UFUK_PLAN = 10  # plan vadesi (islem gunu)
+
+def atr_at(k, t, per=14):
+    PX = D["PR"][k]; s = max(1, t - per + 1)
+    trs = [abs(PX[i] - PX[i - 1]) for i in range(s, t + 1)]
+    return sum(trs) / len(trs) if trs else PX[t] * 0.02
+
+def _pivotlar(k, gun, look=70, w=4):
+    PX = D["PR"][k]; a = max(w, gun - look); b = gun
+    sup = []; res = []
+    for i in range(a + w, b - w):
+        seg = PX[i - w:i + w + 1]
+        if PX[i] == min(seg): sup.append(PX[i])
+        if PX[i] == max(seg): res.append(PX[i])
+    return sup, res
+
+def sd_seviye(k, gun):
+    """Mevcut fiyatin altinda en yakin destek, ustunde en yakin direnc + ATR."""
+    PX = D["PR"][k]; f = PX[gun]; atr = atr_at(k, gun)
+    sup, res = _pivotlar(k, gun)
+    alt = [v for v in sup if v <= f * 1.005]
+    ust = [v for v in res if v >= f * 0.995]
+    destek = max(alt) if alt else (min(sup) if sup else f - 2 * atr)
+    direnc = min(ust) if ust else (max(res) if res else f + 3 * atr)
+    return destek, direnc, atr
+
+def _giris_bolgesinde(f, destek, atr):
+    return (destek <= f <= destek + 0.6 * atr) or abs(f - destek) <= 0.4 * atr
+
+def plan_uret(k, gun):
+    """Bir hissenin o gunku KURAL durumunu ve plan rakamlarini uretir. Tahmin yok."""
+    PX = D["PR"][k]; f = PX[gun]; ma50 = D["MA50"][k][gun]; rsi = D["RSI"][k][gun]
+    destek, direnc, atr = sd_seviye(k, gun); yvol = vol_at(PX, gun)
+    getiriler = [abs(PX[i] / PX[i - 1] - 1) for i in range(max(1, gun - 20), gun)]
+    ort_h = sum(getiriler) / len(getiriler) if getiriler else 0.02
+    son_h = abs(PX[gun] / PX[gun - 1] - 1) if gun > 0 else 0
+    anormal = (son_h > 3.0 * ort_h) or (yvol > 0.80)
+    g_alt = destek; g_ust = destek + 0.6 * atr; g_orta = (g_alt + g_ust) / 2
+    stop = destek - 1.0 * atr; hedef = direnc
+    risk = g_orta - stop; odul = hedef - g_orta
+    rr = odul / risk if risk > 0 else 0
+    stop_mesafe = (g_orta - stop) / g_orta if g_orta else 1
+    risk_gecti = (yvol < 0.70) and (rr >= 1.0) and (stop_mesafe < 0.15)
+    poz = min(0.02 / max(yvol, 0.05), 1.0) * 100  # vol-target pozisyon agirligi %
+    dirence_yakin = abs(f - direnc) / direnc < 0.015
+    destek_altinda = f < destek - 0.5 * atr
+    giriste = _giris_bolgesinde(f, destek, atr)
+    if anormal: durum = "ANORMAL"
+    elif destek_altinda: durum = "STOP"
+    elif dirence_yakin: durum = "KAR_ALMA"
+    elif giriste and not risk_gecti: durum = "RISK_FILTRE"
+    elif giriste and risk_gecti: durum = "GIRIS_AKTIF"
+    else: durum = "BEKLE"
+    neden = []
+    if giriste: neden.append(f"fiyat destege yakin (₺{destek:.2f})")
+    if rsi is not None and rsi < 35: neden.append(f"RSI dusuk (~{rsi:.0f})")
+    if rsi is not None and rsi > 65: neden.append(f"RSI yuksek (~{rsi:.0f})")
+    neden.append("50G ustunde" if f > ma50 else "50G altinda")
+    if dirence_yakin: neden.append(f"dirence yakin (₺{direnc:.2f})")
+    if anormal: neden.append("anormal hareket/oynaklik")
+    if not risk_gecti and giriste:
+        if yvol >= 0.70: neden.append("oynaklik filtreyi gecemedi")
+        if rr < 1.0: neden.append(f"R/R dusuk ({rr:.2f})")
+        if stop_mesafe >= 0.15: neden.append("stop mesafesi cok genis")
+    return dict(durum=durum, f=f, destek=destek, direnc=direnc, atr=atr,
+                g_alt=g_alt, g_ust=g_ust, g_orta=g_orta, stop=stop, hedef=hedef,
+                rr=rr, yvol=yvol, poz=poz, neden=neden, risk_gecti=risk_gecti)
+
+def plan_sicil(k, ufuk=UFUK_PLAN):
+    """GIRIS kuralinin bu hissedeki gecmis sicili: girisde once hedefe mi stop'a mi degdi?"""
+    PX = D["PR"][k]; basari = stop_d = belirsiz = 0
+    for t in range(80, D["N"] - ufuk):
+        destek, direnc, atr = sd_seviye(k, t); f = PX[t]
+        if not _giris_bolgesinde(f, destek, atr): continue
+        stop = destek - 1.0 * atr; hedef = direnc
+        if hedef <= f or stop >= f: continue
+        sonuc = None
+        for j in range(t + 1, t + ufuk + 1):
+            if PX[j] <= stop: sonuc = "stop"; break
+            if PX[j] >= hedef: sonuc = "hedef"; break
+        if sonuc == "hedef": basari += 1
+        elif sonuc == "stop": stop_d += 1
+        else: belirsiz += 1
+    tot = basari + stop_d
+    isabet = round(basari / tot * 100) if tot else 0
+    return dict(n=basari + stop_d + belirsiz, hedef=basari, stop=stop_d,
+                belirsiz=belirsiz, isabet=isabet, kapanan=tot)
+
+def guven_yorum(sc):
+    if sc["kapanan"] < 8: return ("OLGUNLASMADI", "neu", f"{sc['kapanan']} kapanan · veri az, guvenme")
+    if sc["isabet"] >= 60: return ("GECMISTE TUTMUS", "up", f"%{sc['isabet']} hedefe ulasti")
+    if sc["isabet"] <= 40: return ("GECMISTE TERS", "dn", f"%{sc['isabet']} · cogu stop'a degdi")
+    return ("YAZI-TURA", "neu", f"%{sc['isabet']} ≈ guvenme")
+
+# durum basina yonsuz izah (tavsiye degil, "klasik teoride buna ... denir")
+_DURUM_META = {
+    "GIRIS_AKTIF": ("GIRIS BOLGESI AKTIF", "up",
+        "Fiyat, kurallarin tanimladigi giris bolgesinde ve risk filtresini gecti. Klasik teoride buraya 'giris/birikim bolgesi' denir — ama yon GARANTI degil, asagidaki sicile bak."),
+    "BEKLE": ("BEKLE", "neu",
+        "Fiyat ne giris ne kar-alma bolgesinde. Kurallar su an bir aksiyon tetiklemiyor — izleme seviyeleri asagida."),
+    "RISK_FILTRE": ("RISK FILTRESINDEN GECEMEDI", "dn",
+        "Fiyat giris bolgesinde olsa da risk filtresi engelledi (oynaklik / R-R / stop mesafesi). Kurallar bu kosulda islem SIMULE ETMEZDI."),
+    "KAR_ALMA": ("KAR-ALMA BOLGESI", "am",
+        "Fiyat direnc bolgesinde. Klasik teoride buraya 'kar-realizasyon / direnc testi' bolgesi denir — yon ima etmez, geometrik gozlem."),
+    "STOP": ("STOP / GECERSIZLIK BOLGESI", "dn",
+        "Fiyat destegin/gecersizlik seviyesinin altinda. Bu kosulda onceki plan GECERSIZ sayilir — yeni giris onerilmez."),
+    "ANORMAL": ("ANORMAL HACIM-VOLATILITE", "am",
+        "Gunluk hareket/oynaklik olagan bandin cok ustunde. Kurallar bu gurultude islem SIMULE ETMEZ — kenarda durur."),
+}
+
+def plan_html(k, gun):
+    p = plan_uret(k, gun); sc = plan_sicil(k); gy = guven_yorum(sc)
+    baslik, renk, izah = _DURUM_META[p["durum"]]
+    tam_plan = p["durum"] in ("GIRIS_AKTIF", "RISK_FILTRE")
+    h = ['<div class="card"><div class="sec">ISLEM PLANI · KURAL MOTORU</div>']
+    h.append(f'<div class="pdur {renk}"><span class="pdt">{baslik}</span></div>')
+    h.append(f'<div class="pizah">{izah}</div>')
+    # plan rakamlari (durum-bagimli)
+    if tam_plan:
+        h.append('<div class="pgrid">')
+        h.append(f'<div class="pg"><div class="pk">giris bolgesi</div><div class="pv">₺{p["g_alt"]:.2f}–{p["g_ust"]:.2f}</div></div>')
+        h.append(f'<div class="pg"><div class="pk">stop / gecersizlik</div><div class="pv dn">₺{p["stop"]:.2f}</div></div>')
+        h.append(f'<div class="pg"><div class="pk">hedef bolgesi (direnc)</div><div class="pv">₺{p["hedef"]:.2f}</div></div>')
+        rrc = "up" if p["rr"] >= 2 else ("am" if p["rr"] >= 1 else "dn")
+        h.append(f'<div class="pg"><div class="pk">risk / odul</div><div class="pv {rrc}">{p["rr"]:.2f}</div></div>')
+        h.append(f'<div class="pg"><div class="pk">pozisyon (vol-target)</div><div class="pv">%{p["poz"]:.1f}</div></div>')
+        h.append(f'<div class="pg"><div class="pk">beklenen vade</div><div class="pv">~{UFUK_PLAN} gun</div></div>')
+        h.append('</div>')
+        h.append(f'<div class="pgec">Gecersizlik sarti: fiyat <b class="dn">₺{p["stop"]:.2f}</b> altina kapanirsa plan duser.</div>')
+    else:
+        h.append('<div class="pgrid">')
+        h.append(f'<div class="pg"><div class="pk">izlenen destek</div><div class="pv">₺{p["destek"]:.2f}</div></div>')
+        h.append(f'<div class="pg"><div class="pk">izlenen direnc</div><div class="pv">₺{p["direnc"]:.2f}</div></div>')
+        h.append(f'<div class="pg"><div class="pk">oynaklik</div><div class="pv">~%{p["yvol"]*100:.0f}</div></div>')
+        h.append(f'<div class="pg"><div class="pk">pozisyon (vol-target)</div><div class="pv">%{p["poz"]:.1f}</div></div>')
+        h.append('</div>')
+        if p["durum"] == "BEKLE":
+            h.append(f'<div class="pgec">Plan olusmasi icin fiyatin ~₺{p["destek"]:.2f} giris bolgesine gelmesi gerekir.</div>')
+    # SICIL seridi (her zaman) — kullaniciyi koru
+    h.append('<div class="psic">')
+    h.append(f'<div class="psh"><span class="pshl">BU KURAL · BU HISSE · SON 1 YIL SICILI</span><span class="vlab {gy[1]}">{gy[0]}</span></div>')
+    if sc["kapanan"] > 0:
+        h.append(f'<div class="psbar"><div class="st" style="width:{sc["isabet"]}%"></div><div class="sr" style="width:{100-sc["isabet"]}%"></div></div>')
+        h.append(f'<div class="psd"><span class="up">hedefe ulasti {sc["hedef"]}</span><span class="dn">stop {sc["stop"]}</span><span class="neu">belirsiz {sc["belirsiz"]}</span><span class="neu">isabet ~%{sc["isabet"]}</span></div>')
+    else:
+        h.append('<div class="psd"><span class="neu">bu hissede kural henuz hic kapanmadi — sicil yok</span></div>')
+    h.append(f'<div class="pswhy">{gy[2]}</div>')
+    h.append('</div>')
+    h.append(f'<div class="pneden"><span class="lab">Neden bu durum</span> {", ".join(p["neden"])}.</div>')
+    h.append('<div class="puyari">Bu bir tavsiye DEGIL. Kurallarimin bu piyasada SIMULE edecegi aksiyon + gecmis sicili. Yon garantisi yok.</div>')
+    h.append('</div>')
+    return "".join(h)
 
 def reading_defs(k):
     PX = D["PR"][k]; mm = crM(k); pm = crP(k); up, dn = rsi_ev(k)
@@ -664,6 +819,30 @@ div[data-testid="stNumberInput"] input{font-family:'IBM Plex Mono',monospace;bac
 .trrow{display:flex;align-items:center;gap:8px;font-family:'IBM Plex Mono';margin-bottom:2px;}
 .trrow .tk{font-size:13px;font-weight:600;width:56px;}.trrow .px{font-size:11px;}.trrow .cg{font-size:10px;font-weight:600;}
 .up{color:#2DD4BF;}.dn{color:#EF5B4C;}.am{color:#E8B84B;}.neu{color:#C9CDD3;}
+.pdur{border-radius:10px;padding:11px 13px;margin-bottom:9px;border:1px solid;}
+.pdur.up{background:rgba(45,212,191,.08);border-color:rgba(45,212,191,.3);}
+.pdur.dn{background:rgba(239,91,76,.08);border-color:rgba(239,91,76,.3);}
+.pdur.am{background:rgba(232,184,75,.08);border-color:rgba(232,184,75,.3);}
+.pdur.neu{background:rgba(232,228,216,.04);border-color:rgba(232,228,216,.14);}
+.pdt{font-family:'Archivo';font-weight:800;font-size:14px;letter-spacing:.04em;}
+.pdur.up .pdt{color:#2DD4BF;}.pdur.dn .pdt{color:#EF5B4C;}.pdur.am .pdt{color:#E8B84B;}.pdur.neu .pdt{color:#C9CDD3;}
+.pizah{font-family:'Hanken Grotesk';font-size:11px;color:#9aa0aa;line-height:1.55;margin-bottom:11px;}
+.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:9px;}
+.pg{background:#11181F;border:1px solid rgba(232,228,216,.08);border-radius:9px;padding:8px 9px;}
+.pg .pk{font-family:'IBM Plex Mono';font-size:8px;color:#5A616B;letter-spacing:.04em;}
+.pg .pv{font-family:'IBM Plex Mono';font-size:14px;font-weight:600;margin-top:3px;}
+.pgec{font-family:'Hanken Grotesk';font-size:10.5px;color:#7E848E;line-height:1.5;margin-bottom:11px;}
+.pgec b{font-family:'IBM Plex Mono';}
+.psic{background:#0A0E13;border:1px solid rgba(232,228,216,.08);border-radius:11px;padding:11px;margin-bottom:9px;}
+.psh{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.pshl{font-family:'Archivo';font-weight:700;font-size:8px;letter-spacing:.09em;color:#E8B84B;flex:1;}
+.psbar{position:relative;height:7px;border-radius:4px;overflow:hidden;display:flex;background:rgba(232,228,216,.06);margin-bottom:6px;}
+.psbar .st{background:rgba(45,212,191,.55);}.psbar .sr{background:rgba(239,91,76,.45);}
+.psd{font-family:'IBM Plex Mono';font-size:9.5px;display:flex;flex-wrap:wrap;gap:3px 12px;}
+.pswhy{font-family:'IBM Plex Mono';font-size:9px;color:#5A616B;margin-top:6px;}
+.pneden{font-family:'Hanken Grotesk';font-size:10.5px;color:#9aa0aa;line-height:1.5;margin-bottom:9px;}
+.pneden .lab{font-family:'IBM Plex Mono';font-size:7.5px;letter-spacing:.1em;text-transform:uppercase;color:#5A616B;border:1px solid rgba(232,228,216,.08);padding:1px 5px;border-radius:4px;margin-right:5px;}
+.puyari{font-family:'Hanken Grotesk';font-size:9.5px;color:#7E848E;line-height:1.5;background:rgba(232,184,75,.04);border:1px solid rgba(232,184,75,.16);border-radius:9px;padding:8px 10px;}
 .bk{font-family:'IBM Plex Mono';font-size:11px;color:#7E848E;}
 h3.hh{font-family:'Archivo';font-weight:800;font-size:22px;margin:2px 0;}
 </style>
@@ -751,6 +930,7 @@ def v_hisse(s):
     H(f'<div class="ax" style="display:flex;align-items:baseline;gap:8px"><span class="hh">{D["TK"][k]}</span><span style="font-weight:600;font-size:18px;margin-left:auto">{ftl(price(s,k))}</span><span class="{cgc}" style="font-size:12px;font-weight:600">{"▲%" if cg>=0 else "▼%"}{abs(cg):.1f}</span></div>')
     H('<div class="lbl" style="margin-bottom:9px">komuta merkezi · grafik son ~4 ay · sicil son 1 yil</div>')
     H(f'<div class="card" style="padding:8px 6px 4px">{chart_svg(k, day)}</div>')
+    H(plan_html(k, day))
     H(durum_html(s, k))
     H(uygunluk_html(k, day, S))
     H(readings_html(k))
