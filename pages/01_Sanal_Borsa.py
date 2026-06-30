@@ -671,6 +671,8 @@ def main():
     _renk, _yazi = (("#34d399", "☁️ Bulut kalici · her cihazda ayni cuzdan") if kl.BULUT_AKTIF
                     else ("#fbbf24", "⚠️ Yerel mod · bulut bagli degil (REHBER_KALICILIK)"))
     H(f'<div style="text-align:center;font-size:0.72rem;color:{_renk};margin:-2px 0 8px">{_yazi}</div>')
+    H("<a href='/' target='_self' style='display:block;text-align:center;font-size:0.78rem;"
+      "color:#9fb4ad;text-decoration:none;margin:0 0 8px'>\u2190 APEX ana sayfa</a>")
     stg = ["Ogren", "Sanal Test", "Ilk Gercek Adim", "Tecrube", "Lisansli APEX"]
     H('<div class="journey">' + "".join(f'<div class="jst {"on" if i==1 else ""}">{x}{"<br>•buradasin•" if i==1 else ""}</div>' for i, x in enumerate(stg)) + '</div>')
 
@@ -835,4 +837,3 @@ def v_cuzdan(s):
 
 if not os.environ.get("APEX_TEST"):
     main()
-
