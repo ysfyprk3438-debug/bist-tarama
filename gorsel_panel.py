@@ -1,4 +1,4 @@
-# surum 1
+# surum 2
 # -*- coding: utf-8 -*-
 """
 ═══════════════════════════════════════════════════════════════
@@ -27,6 +27,20 @@ except Exception:
     components = None
 
 import veri  # veri.veri_al(kod) -> (df, durum)
+
+# BIST 100 (XU100) — kullanıcı sayfadan düzenleyebilir
+XU100 = [
+    "AEFES","AGHOL","AKBNK","AKCNS","AKFGY","AKSA","AKSEN","ALARK","ALFAS","ARCLK",
+    "ASELS","ASTOR","BERA","BIMAS","BRSAN","BRYAT","BUCIM","CCOLA","CIMSA","DOAS",
+    "DOHOL","ECILC","EGEEN","EKGYO","ENJSA","ENKAI","EREGL","EUPWR","FROTO","GARAN",
+    "GESAN","GUBRF","HALKB","HEKTS","ISCTR","ISGYO","ISMEN","IZMDC","KAYSE","KCHOL",
+    "KONTR","KONYA","KORDS","KOZAA","KOZAL","KRDMD","MAVI","MGROS","MIATK","ODAS",
+    "OTKAR","OYAKC","PETKM","PGSUS","PSGYO","QUAGR","SAHOL","SASA","SISE","SKBNK",
+    "SMRTG","SOKM","TAVHL","TCELL","THYAO","TKFEN","TOASO","TTKOM","TTRAK","TUKAS",
+    "TUPRS","ULKER","VAKBN","VESBE","VESTL","YKBNK","ZOREN","ALBRK","ANSGR","ARDYZ",
+    "BFREN","CANTE","CWENE","DAPGM","ENERY","FENER","GENIL","GLYHO","IZINS","KMPUR",
+    "KZBGY","MPARK","PAPIL","REEDR","TABGD","TSKB","TUREX","YEOTK","YYLGD","ZRGYO",
+]
 
 UFUK = 10
 NOTR_ALT, NOTR_UST = 40.0, 60.0
@@ -493,12 +507,10 @@ const APEX_GP = __VERI__;
 
 
 def goster(kodlar, gun=400, yukseklik=None):
-    """app.py'den çağrılır. kodlar: hisse kodu listesi."""
+    """app.py/sayfadan çağrılır. kodlar: hisse kodu listesi."""
     if st is None:
         raise RuntimeError("streamlit yok")
-    paketler = []
-    for kod in kodlar:
-        paketler.append(_paket_cache(kod, gun))
+    paketler = _paketler_cache(tuple(kodlar), gun)
     veri_json = json.dumps(paketler, ensure_ascii=False)
     html = _TMPL.replace("__VERI__", veri_json)
     if yukseklik is None:
@@ -507,11 +519,26 @@ def goster(kodlar, gun=400, yukseklik=None):
     components.html(html, height=int(yukseklik), scrolling=True)
 
 
+def _paketleri_cek(kodlar, gun):
+    """Hisseleri paralel çek (100 hisse seri olursa çok yavaş)."""
+    from concurrent.futures import ThreadPoolExecutor
+    out = {}
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        futs = {ex.submit(hisse_paketi, k, gun): k for k in kodlar}
+        for f in futs:
+            k = futs[f]
+            try:
+                out[k] = f.result()
+            except Exception as e:
+                out[k] = {"kod": k, "hata": type(e).__name__}
+    return [out[k] for k in kodlar]  # giriş sırasını koru
+
+
 # Streamlit cache (varsa) — veri çekimi pahalı
 if st is not None:
     @st.cache_data(ttl=900, show_spinner=False)
-    def _paket_cache(kod, gun):
-        return hisse_paketi(kod, gun)
+    def _paketler_cache(kodlar_tuple, gun):
+        return _paketleri_cek(list(kodlar_tuple), gun)
 else:
-    def _paket_cache(kod, gun):
-        return hisse_paketi(kod, gun)
+    def _paketler_cache(kodlar_tuple, gun):
+        return _paketleri_cek(list(kodlar_tuple), gun)
