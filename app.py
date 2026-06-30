@@ -36,6 +36,7 @@ requirements.txt:  streamlit  yfinance  numpy
 """
 import json, datetime, math, pathlib
 import numpy as np
+import kalici as kl  # bulut kalicilik omurgasi (Google Sheets)
 
 OUT = "apex.html"
 SURUM = "v4.4"
@@ -1093,6 +1094,7 @@ def kalibrasyon_ozet():
 # Persistans: Streamlit repoya yazamaz -> UI satiri uretir, sen commit'lersin;
 # cron vade dolaninca otomatik kapatir. UYDURMA YOK.
 KARAR_DOSYA = "karar_defteri.csv"
+KARAR_ANAHTAR = "karar_defteri"   # bulutta karar defterinin anahtari
 KARAR_UFUK = 20
 KARAR_BASLIK = ["tarih","hisse","karar","fiyat","poz_pct","rejim","risk","tuzak","ufuk",
                 "neden","sonuc_tarih","cikis","getiri_pct","isabet","not"]
@@ -1112,8 +1114,8 @@ def karar_satir_uret(bugun, hisse, karar, fiyat, rejim="", risk="", tuzak="",
     _csv.DictWriter(buf, fieldnames=KARAR_BASLIK).writerow({k: row.get(k, "") for k in KARAR_BASLIK})
     return buf.getvalue().strip()
 
-def karar_oku():
-    """karar_defteri.csv satirlari (liste) veya []. UYDURMA YOK."""
+def _karar_csv_oku():
+    """Eski karar_defteri.csv satirlari (yalnizca bir kerelik gocus icin)."""
     import csv as _csv
     p = pathlib.Path(KARAR_DOSYA)
     if not p.exists(): return []
@@ -1122,18 +1124,39 @@ def karar_oku():
     except Exception:
         return []
 
+def _karar_yukle():
+    """Karar defteri satirlari (liste). Bulut kaynak; ilk seferde eski CSV'den gocer."""
+    rows = kl.yukle(KARAR_ANAHTAR, None)
+    if rows is None:                    # bulutta henuz hic yok
+        rows = _karar_csv_oku()         # varsa eski CSV'yi bir kez tasi
+        if rows:
+            kl.kaydet(KARAR_ANAHTAR, rows)
+        else:
+            rows = []
+    return rows
+
+def _karar_kaydet(rows):
+    kl.kaydet(KARAR_ANAHTAR, rows)
+
+def karar_ekle(row):
+    """Tek karar satirini deftere (buluta) ekle. row: KARAR_BASLIK alanlarini iceren dict."""
+    rows = _karar_yukle()
+    rows.append({k: row.get(k, "") for k in KARAR_BASLIK})
+    _karar_kaydet(rows)
+    return True
+
+def karar_oku():
+    """Karar defteri satirlari (liste) veya []. Bulut kaynakli. UYDURMA YOK."""
+    return _karar_yukle()
+
 def karar_sonuclandir(bugun, fiyatlar):
     """Vadesi dolmus ACIK kararlari guncel fiyatla kapatir. isabet:
     girdim/ekledim -> fiyat ARTTIYSA dogru; almadim/sattim -> fiyat DUSTUYSE dogru.
-    ISLEM GUNU sayar (takvim degil). Kapatilan sayisini dondurur."""
-    import csv as _csv, datetime as _dt
-    p = pathlib.Path(KARAR_DOSYA)
-    if not p.exists(): return 0
+    ISLEM GUNU sayar (takvim degil). Kapatilan sayisini dondurur. Bulut kaynakli."""
+    import datetime as _dt
     bug = bugun if hasattr(bugun, "toordinal") else _dt.date.fromisoformat(str(bugun))
-    try:
-        with open(p, encoding="utf-8") as f: satirlar = list(_csv.DictReader(f))
-    except Exception:
-        return 0
+    satirlar = _karar_yukle()
+    if not satirlar: return 0
     kapatilan = 0
     for r in satirlar:
         if (r.get("isabet") or "") != "": continue
@@ -1153,12 +1176,7 @@ def karar_sonuclandir(bugun, fiyatlar):
         r["isabet"] = 1 if (gercek != 0 and yon == gercek) else 0
         kapatilan += 1
     if kapatilan:
-        try:
-            with open(p, "w", encoding="utf-8", newline="") as f:
-                w = _csv.DictWriter(f, fieldnames=KARAR_BASLIK); w.writeheader()
-                for r in satirlar: w.writerow({k: r.get(k, "") for k in KARAR_BASLIK})
-        except Exception:
-            return 0
+        _karar_kaydet(satirlar)
     return kapatilan
 
 def karar_ozet():
@@ -2408,23 +2426,25 @@ def run_streamlit():
         _poz = _c3.number_input("Pozisyon (sermayenin %'si, istege bagli)", min_value=0.0, max_value=100.0,
                                 value=0.0, step=1.0, key="kd_poz")
         _not = _c4.text_input("Not (istege bagli)", key="kd_not", max_chars=80)
-        if st.button("Kayit satiri uret", key="kd_btn", use_container_width=True):
+        if st.button("Deftere ekle", key="kd_btn", type="primary", use_container_width=True):
             if not _neden.strip():
                 st.warning("Once kisa bir 'neden' yaz \u2014 karar gunlugunun butun degeri NEDEN'i kaydetmekte.")
             else:
                 _tz = _ks.get("tuzak") or {}
-                _satir = karar_satir_uret(
-                    datetime.date.today(), _ks["tk"], _karar, _ks.get("px"),
-                    rejim=data["rejim"]["durus"], risk=_ks.get("risk_skor"),
-                    tuzak=(_tz.get("yanan") if isinstance(_tz, dict) else ""),
-                    poz_pct=(round(_poz, 1) if _poz > 0 else ""), neden=_neden.strip(),
-                    ufuk=_ufuk, not_=_not.strip())
-                st.success("Asagidaki satiri kopyala \u2192 GitHub'da **karar_defteri.csv**'nin SONUNA yeni satir olarak yapistir \u2192 Commit.")
-                st.code(_satir, language="text")
-                st.caption("Dosya henuz yoksa: once 'Add file \u2192 Create new file', ad **karar_defteri.csv**, "
-                           "ilk satira BASLIK'i koy:")
-                st.code(",".join(KARAR_BASLIK), language="text")
-                st.caption("Sonuc alanlari bos \u2014 cron {} islem gunu sonra otomatik doldurur. UYDURMA YOK.".format(_ufuk))
+                _row = {
+                    "tarih": datetime.date.today().isoformat(), "hisse": _ks["tk"],
+                    "karar": _karar, "fiyat": _ks.get("px"),
+                    "poz_pct": (round(_poz, 1) if _poz > 0 else ""),
+                    "rejim": data["rejim"]["durus"], "risk": _ks.get("risk_skor"),
+                    "tuzak": (_tz.get("yanan") if isinstance(_tz, dict) else ""),
+                    "ufuk": _ufuk, "neden": _neden.strip(),
+                    "sonuc_tarih": "", "cikis": "", "getiri_pct": "", "isabet": "",
+                    "not": _not.strip(),
+                }
+                karar_ekle(_row)
+                _hedef = "buluta" if kl.BULUT_AKTIF else "yerel yedege"
+                st.success("Karar deftere eklendi ({}). {} islem gunu sonra otomatik sonuclanir \u2014 elle GitHub yok.".format(_hedef, _ufuk))
+                st.rerun()
     else:
         st.caption("Canli veri gelince karar girisi acilir.")
     _koz2 = karar_ozet()
