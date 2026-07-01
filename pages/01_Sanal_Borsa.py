@@ -1,4 +1,4 @@
-# surum 9 — APEX: Kural Motoru + AL Sinyali + Beklenen Deger/Placebo + Oto + Forward-test paneli.
+# surum 10 — APEX Sanal Borsa: Havuz AL Sinyali taramasi (motor pasiften aktife).
 import os
 import json
 import math
@@ -208,6 +208,23 @@ def havuz_scores():
                  key=lambda o: o[1]["uyum"], reverse=True)
     st.session_state["_hscore"] = ((s_day, D["N"], D["NST"]), arr)
     return arr
+
+def al_tarama(s):
+    """BIST100'de su an AL SINYALI veren hisseler (cache'li). Cogu gun bos — bu normal."""
+    gun = s["day"]
+    cache = st.session_state.get("_altara")
+    if cache and cache[0] == (gun, D["N"], D["NST"]):
+        return cache[1]
+    sonuc = []
+    for k in range(D["NST"]):
+        p = plan_uret(k, gun)
+        if p["durum"] == "GIRIS_AKTIF":
+            a = al_sinyali(k, gun, None, p)
+            if a["onay"]:
+                sonuc.append((k, a["ka"], p))
+    sonuc.sort(key=lambda o: o[1]["edge"], reverse=True)  # en guclu edge ustte
+    st.session_state["_altara"] = ((gun, D["N"], D["NST"]), sonuc)
+    return sonuc
 
 # ================= KURAL-TABANLI ISLEM PLANI MOTORU =================
 # Yon TAHMIN ETMEZ. Sabit esiklerin mekanik ciktisi + bu hissedeki gecmis SICIL.
@@ -928,6 +945,16 @@ div[data-testid="stNumberInput"] input{font-family:'IBM Plex Mono',monospace;bac
 .puyari{font-family:'Hanken Grotesk';font-size:9.5px;color:#7E848E;line-height:1.5;background:rgba(232,184,75,.04);border:1px solid rgba(232,184,75,.16);border-radius:9px;padding:8px 10px;}
 .alsin{display:flex;align-items:center;gap:8px;background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.45);border-radius:10px;padding:9px 12px;margin-bottom:7px;}
 .alsin .alt{font-family:'Archivo';font-weight:800;font-size:15px;color:#2DD4BF;letter-spacing:.03em;}
+.altar{background:rgba(45,212,191,.07);border:1px solid rgba(45,212,191,.35);border-radius:12px;padding:11px;margin-bottom:11px;}
+.altar.bos{background:rgba(232,228,216,.03);border-color:rgba(232,228,216,.1);}
+.altarh{font-family:'Archivo';font-weight:800;font-size:12px;color:#2DD4BF;letter-spacing:.04em;margin-bottom:8px;}
+.altarh.neu{color:#7E848E;}
+.altari{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid rgba(232,228,216,.06);}
+.altk{font-family:'IBM Plex Mono';font-weight:600;font-size:13px;width:64px;}
+.altd{font-family:'IBM Plex Mono';font-size:9px;color:#7E848E;flex:1;}
+.alte{font-family:'Archivo';font-weight:700;font-size:9px;padding:2px 7px;border-radius:5px;background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.3);}
+.altarn{font-family:'Hanken Grotesk';font-size:10px;color:#7E848E;line-height:1.5;margin-top:8px;}
+.tstar{color:#2DD4BF;font-size:11px;margin-left:5px;}
 .alsin .als{font-family:'IBM Plex Mono';font-size:9px;color:#2DD4BF;opacity:.8;margin-left:auto;}
 .alacik{font-family:'Hanken Grotesk';font-size:10.5px;color:#9aa0aa;line-height:1.55;margin-bottom:11px;}
 .bded{margin-top:9px;border-top:1px solid rgba(232,228,216,.08);padding-top:9px;}
@@ -999,6 +1026,18 @@ def main():
 
 def v_havuz(s):
     H('<div class="warnb"><b>Havuz — BIST100, okuma-uygunlugu skoruna gore sirali.</b> AL listesi DEGIL: skor "okumalar gecmiste ne kadar tuttu" demek. Cogu hisse ~%50 (yazi-tura).</div>')
+    # AL SINYALI TARAMASI (su an tum suzgecten gecen hisseler)
+    al = al_tarama(s); al_set = set(k for k, _, _ in al)
+    if al:
+        h = '<div class="altar"><div class="altarh">★ AL SINYALI · SU AN</div>'
+        for k, ka, p in al:
+            h += (f'<div class="altari"><span class="altk">{D["TK"][k]}</span>'
+                  f'<span class="altd">R/R {p["rr"]:.1f} · sicil %{ka["isabet"]} · edge {ka["edge"]:+.2f}R</span>'
+                  f'<span class="alte up">LEHTE</span></div>')
+        h += '<div class="altarn">Tum suzgecten gecti (giris+sicil+R/R+edge). Yine de GARANTI degil — her biri kendi orneklemini tasir. Detay icin hisseyi ac.</div></div>'
+        H(h)
+    else:
+        H('<div class="altar bos"><div class="altarh neu">AL SINYALI · SU AN YOK</div><div class="altarn">Hicbir hisse tum suzgecten gecmiyor. Bu NORMAL — cogu gun boyle. Kurallar firsat olmayinca susar; sistem seni bos yere islem yaptirmaz.</div></div>')
     arr = havuz_scores()
     cols = st.columns(2)
     for idx, (k, S) in enumerate(arr):
@@ -1006,9 +1045,10 @@ def v_havuz(s):
         cg = today_pct(s, k); sc = S["band"][1]
         color = "#2DD4BF" if sc == "up" else ("#EF5B4C" if sc == "dn" else "#7E848E")
         cgc = "up" if cg >= 0 else "dn"
+        rozet = '<span class="tstar">★</span>' if k in al_set else ""
         with col:
             H(f'<div class="tile"><div class="spark">{sparkline(k, s["day"], color)}</div>'
-              f'<div class="tk">{D["TK"][k]}</div><div class="pxr">{ftl(price(s,k))} <span class="{cgc}">{"▲%" if cg>=0 else "▼%"}{abs(cg):.1f}</span></div>'
+              f'<div class="tk">{D["TK"][k]}{rozet}</div><div class="pxr">{ftl(price(s,k))} <span class="{cgc}">{"▲%" if cg>=0 else "▼%"}{abs(cg):.1f}</span></div>'
               f'<div class="scw"><div class="scl">OKUMA-UYGUNLUGU</div><div class="ax"><span class="sc {sc}">~%{S["uyum"]:.0f}</span> <span class="chip {sc}">{S["band"][0]}</span></div></div></div>')
             if st.button("Incele →", key=f"open{k}"):
                 s["sel"] = k; s["tab"] = "hisse"; save_state(s); st.rerun()
