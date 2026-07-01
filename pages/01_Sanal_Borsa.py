@@ -1,4 +1,4 @@
-# surum 15 — APEX Guven Skoru (0-100 saglamlik) + sade dil + Piyasa Nabzi + davranissal ayna + ferah gorunum.
+# surum 16 — APEX Karnesi (kalibrasyon defterinden gercek karne) + Telegram sade dil.
 import os
 import json
 import math
@@ -267,6 +267,65 @@ def nabiz_html(s):
              f'<div class="nab-h"><div class="nab-v dn">{n["dusen"]}</div><div class="nab-k">bugun ▼</div></div></div>')
     h.append(f'<div class="nabiz-ist {ist[1]}">Risk istahi: <b>{ist[0]}</b> — {ist[2]}.</div>')
     h.append(f'<div class="nabiz-ayna {ac}"><b>Ayna:</b> {ayna}</div>')
+    h.append('</div>')
+    return "".join(h)
+
+# ========== APEX KARNESI (app.py'nin cron'la doldurdugu kalibrasyon_defteri.csv) ==========
+KALIB_CSV = ROOT / "kalibrasyon_defteri.csv"
+_SINYAL_SADE = {
+    "akis_yuklenme": "Para akisi baskisi (alim/satim)",
+    "ma_kesisim": "Ortalama kesisimi (golden/death cross)",
+    "tuzak_yuksek": "Tuzak uyarisi",
+    "risk_yuksek": "Yuksek risk uyarisi",
+}
+
+def karne_oku():
+    """app.py'nin cron ile doldurdugu kalibrasyon_defteri.csv'yi okur, ozet cikarir.
+    Dosya yok/bos -> None (UYDURMA YOK)."""
+    import csv as _csv
+    if not KALIB_CSV.exists(): return None
+    try:
+        with open(KALIB_CSV, encoding="utf-8") as f: rows = list(_csv.DictReader(f))
+    except Exception:
+        return None
+    grup = {}; acik = 0
+    for r in rows:
+        if (r.get("isabet") or "") == "": acik += 1; continue
+        try: h = int(r["isabet"])
+        except Exception: continue
+        g = grup.setdefault(r.get("sinyal", "?"), {"n": 0, "h": 0}); g["n"] += 1; g["h"] += h
+    sinyaller = []; tn = th = 0
+    for ad, g in sorted(grup.items()):
+        pct = round(g["h"] / g["n"] * 100, 1) if g["n"] else 0.0
+        sinyaller.append({"sinyal": ad, "n": g["n"], "isabet": pct}); tn += g["n"]; th += g["h"]
+    return dict(sinyaller=sinyaller, kapali=tn, acik=acik,
+               toplam_isabet=round(th / tn * 100, 1) if tn else None)
+
+def karne_html():
+    k = karne_oku()
+    if not k or k["kapali"] == 0:
+        acik = k["acik"] if k else 0
+        ek = f" Su an {acik} kayit acik, vadesi (~5 islem gunu) dolunca sonuclanacak." if acik else ""
+        return ('<div class="karne"><div class="karne-bas">📋 APEX KARNESI</div>'
+                f'<div class="karne-bos">Henuz sonuclanmis kayit yok.{ek} '
+                'Sistem her is gunu kendi sinyallerini muhurlyor; birkac gun sonra "tuttu mu tutmadi mi" belli oluyor. '
+                '<b>Bu ekran bilerek BOS baslar</b> — cunku gercek karne uydurulamaz, ancak zamanla durustce birikir. Sabir en dogru yol.</div></div>')
+    h = ['<div class="karne"><div class="karne-bas">📋 APEX KARNESI · sistemin gecmis sinyalleri</div>']
+    h.append(f'<div class="karne-ac">Sistem gecmiste su sinyalleri verdi; {k["kapali"]} tanesi sonuclandi. "Isabet" = yonu tuttu mu. <b>%50 civari = yon vermiyor (yazi-tura) — bu normal ve durust, cunku APEX yon tahmini iddia etmez.</b></div>')
+    for sn in k["sinyaller"]:
+        ad = _SINYAL_SADE.get(sn["sinyal"], sn["sinyal"]); pct = sn["isabet"]; n = sn["n"]
+        if n < 30: et, rc = ("veri az, guvenme", "neu")
+        elif 42 <= pct <= 58: et, rc = ("yazi-tura seviyesi", "neu")
+        elif pct > 58: et, rc = ("yariyi geciyor", "up")
+        else: et, rc = ("yaridan az tutmus", "dn")
+        h.append(f'<div class="karne-satir"><div class="karne-sh"><span class="karne-sn">{ad}</span>'
+                 f'<span class="karne-pct {rc}">%{pct}</span></div>'
+                 f'<div class="karne-bar"><div class="{rc}" style="width:{min(100,max(0,pct)):.0f}%"></div></div>'
+                 f'<div class="karne-alt">{n} kez sonuclandi · {et}</div></div>')
+    ti = k["toplam_isabet"]
+    yorum = " Yazi-tura civari — sistem yon TAHMIN etmiyor, zaten iddiasi da bu degil." if (ti and 42 <= ti <= 58) else ""
+    h.append(f'<div class="karne-toplam">Genel: {k["kapali"]} sonuclanan sinyalde ~%{ti} isabet.{yorum}</div>')
+    if k["acik"]: h.append(f'<div class="karne-alt" style="margin-top:6px">+ {k["acik"]} kayit hala acik (vadesi dolmadi).</div>')
     h.append('</div>')
     return "".join(h)
 
@@ -1126,6 +1185,22 @@ div[data-testid="stTextInput"] input::placeholder{color:#5A616B;}
 .nabiz-ayna.dn{background:rgba(239,91,76,.07);border:1px solid rgba(239,91,76,.2);}
 .nabiz-ayna.am{background:rgba(232,184,75,.06);border:1px solid rgba(232,184,75,.18);}
 .nabiz-ayna.neu{background:rgba(232,228,216,.03);border:1px solid rgba(232,228,216,.1);}
+.karne{background:linear-gradient(135deg,#0C1117,#0A0E13);border:1px solid rgba(232,228,216,.1);border-radius:14px;padding:14px;margin:0 0 12px;}
+.karne-bas{font-family:'Archivo';font-weight:800;font-size:13px;color:#C9CDD3;letter-spacing:.03em;margin-bottom:9px;}
+.karne-ac{font-family:'Hanken Grotesk';font-size:11px;color:#9aa0aa;line-height:1.55;margin-bottom:12px;}
+.karne-ac b{font-family:'IBM Plex Mono';color:#E8E4D8;font-size:10.5px;}
+.karne-bos{font-family:'Hanken Grotesk';font-size:11.5px;color:#9aa0aa;line-height:1.6;}
+.karne-bos b{font-family:'IBM Plex Mono';color:#E8B84B;}
+.karne-satir{margin-bottom:11px;}
+.karne-sh{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;}
+.karne-sn{font-family:'Archivo';font-weight:700;font-size:12px;color:#E8E4D8;}
+.karne-pct{font-family:'IBM Plex Mono';font-size:13px;font-weight:600;}
+.karne-pct.up{color:#2DD4BF;}.karne-pct.dn{color:#EF5B4C;}.karne-pct.neu{color:#C9CDD3;}
+.karne-bar{height:6px;border-radius:4px;background:rgba(232,228,216,.07);overflow:hidden;margin-bottom:4px;}
+.karne-bar>div{height:100%;border-radius:4px;}
+.karne-bar>div.up{background:rgba(45,212,191,.55);}.karne-bar>div.dn{background:rgba(239,91,76,.5);}.karne-bar>div.neu{background:rgba(201,205,211,.4);}
+.karne-alt{font-family:'IBM Plex Mono';font-size:9px;color:#7E848E;}
+.karne-toplam{font-family:'Hanken Grotesk';font-size:11px;color:#c9cdd3;line-height:1.55;border-top:1px solid rgba(232,228,216,.08);padding-top:9px;margin-top:4px;}
 .alsin .als{font-family:'IBM Plex Mono';font-size:9px;color:#2DD4BF;opacity:.8;margin-left:auto;}
 .alacik{font-family:'Hanken Grotesk';font-size:10.5px;color:#9aa0aa;line-height:1.55;margin-bottom:11px;}
 .bded{margin-top:9px;border-top:1px solid rgba(232,228,216,.08);padding-top:9px;}
@@ -1299,6 +1374,7 @@ def v_pozisyon(s):
     H(f'<div class="card"><div class="acrow"><span class="k">Nakit</span><span>{ftl(s["cash"])}</span></div><div class="acrow"><span class="k">Mevduat</span><span class="am">{ftl(s["mevduat"])}</span></div><div class="acrow" style="border-bottom:0"><span class="k">Toplam portfoy</span><span class="{"up" if tot_val(s)>=s["deposited"] else "dn"}">{ftl(tot_val(s))}</span></div></div>')
 
 def v_muhasebe(s):
+    H(karne_html())
     sub = [("manuel", "Manuel"), ("oto", "Otomatik"), ("birlesik", "Birlesik")]
     sc = st.columns(3)
     for i, (tk, lbl) in enumerate(sub):
