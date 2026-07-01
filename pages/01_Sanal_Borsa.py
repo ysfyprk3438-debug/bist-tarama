@@ -1,4 +1,4 @@
-# surum 8 — APEX: Kural Motoru + AL Sinyali (coklu suzgec) + BEKLENEN DEGER/Placebo + Oto.
+# surum 9 — APEX: Kural Motoru + AL Sinyali + Beklenen Deger/Placebo + Oto + Forward-test paneli.
 import os
 import json
 import math
@@ -1089,6 +1089,23 @@ def v_muhasebe(s):
     elif s["acctTab"] == "oto":
         H('<div class="sec" style="border:0;margin:4px 2px">OTOMATIK DEFTER · APEX</div>')
         H('<div class="warnb" style="margin-bottom:10px"><b>Oto nasil calisir (kural + suzgec):</b> Yon TAHMIN ETMEZ. Sadece <b>AL SINYALI</b> veren hisselere girer = giris bolgesi aktif + sicil ≥%52 + R/R ≥1.5 + <b>edge>0</b> (kurulum placeboyu geciyor, yani kazanc piyasa yonunden fazlasi). Cogu gun hic sinyal cikmaz — secici. Pozisyonu oynakliga gore boyutlar (vol-target), yari sermaye nakitte kalir, giris aninda stop/hedef sabitlenir, her gun stop/hedef kontrol eder, ~21 gunde bir tarar. Her islem deftere yazilir. <b>Kar amaci var ama kar GARANTISI yok</b> — sadece istatistigin lehe egildigi anlarda, riski kontrollu, simule eder.</div>')
+        # FORWARD-TEST: oto gercek sonuclari (ledger'dan)
+        oh = sum(1 for e in s["ledger"] if e["type"] == "Oto HEDEF cikis")
+        os_ = sum(1 for e in s["ledger"] if e["type"] == "Oto STOP cikis")
+        og = sum(1 for e in s["ledger"] if e["type"] == "Oto AL girisi")
+        okap = oh + os_; oisb = round(oh / okap * 100) if okap else 0
+        acikA = sum(1 for k, p in s["posA"].items() if p["qty"] > 0)
+        H('<div class="psic">')
+        H(f'<div class="psh"><span class="pshl">FORWARD-TEST · OTO GERCEK SONUCLARI</span></div>')
+        if okap > 0:
+            H(f'<div class="psbar"><div class="st" style="width:{oisb}%"></div><div class="sr" style="width:{100-oisb}%"></div></div>')
+            H(f'<div class="psd"><span class="up">hedef {oh}</span><span class="dn">stop {os_}</span><span class="neu">isabet ~%{oisb}</span><span class="neu">giris {og} · acik {acikA}</span></div>')
+            rkz = "up" if s["realizedA"] >= 0 else "dn"
+            H(f'<div class="psd" style="margin-top:5px"><span class="{rkz}">gerceklesen K/Z {fsig(s["realizedA"])}</span></div>')
+            H(f'<div class="pswhy">Bu ILERI-test: backtest\'in vaadi (beklenen deger) ile gerceklesen burada karsilasir. {okap} kapanan islem — anlamli yorum icin daha cok gerekir. Az orneklemde sonuca guvenme.</div>')
+        else:
+            H(f'<div class="psd"><span class="neu">Henuz kapanan oto islemi yok. Oto\'yu acip ilerlet; AL sinyali cikinca girer, stop/hedefte kapanir.</span></div>')
+        H('</div>')
         H(block([("APEX pozisyon", ftl(pv(s, s["posA"]))),
                  ("Gerceklesen K/Z", fsig(s["realizedA"]), "up" if s["realizedA"] >= 0 else "dn"),
                  ("Gerceklesmemis K/Z", fsig(unrealA), "up" if unrealA >= 0 else "dn"),
