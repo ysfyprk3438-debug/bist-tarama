@@ -1,4 +1,4 @@
-# surum 16 — APEX Karnesi (kalibrasyon defterinden gercek karne) + Telegram sade dil.
+# surum 17 — Guven Skoru Karnesi (skor_motoru.py ile otonom skor muhurleme + gerceklesme karnesi).
 import os
 import json
 import math
@@ -326,6 +326,57 @@ def karne_html():
     yorum = " Yazi-tura civari — sistem yon TAHMIN etmiyor, zaten iddiasi da bu degil." if (ti and 42 <= ti <= 58) else ""
     h.append(f'<div class="karne-toplam">Genel: {k["kapali"]} sonuclanan sinyalde ~%{ti} isabet.{yorum}</div>')
     if k["acik"]: h.append(f'<div class="karne-alt" style="margin-top:6px">+ {k["acik"]} kayit hala acik (vadesi dolmadi).</div>')
+    h.append('</div>')
+    return "".join(h)
+
+# ========== GUVEN SKORU KARNESI (skor_motoru.py'nin doldurdugu skor_defteri.csv) ==========
+SKOR_CSV_PATH = ROOT / "skor_defteri.csv"
+
+def skor_karne_oku():
+    """skor_motoru cron'unun doldurdugu skor_defteri.csv'yi skor ARALIGI bazli ozetler.
+    Yok/bos -> None (UYDURMA YOK)."""
+    import csv as _csv
+    if not SKOR_CSV_PATH.exists(): return None
+    try:
+        with open(SKOR_CSV_PATH, encoding="utf-8") as f: rows = list(_csv.DictReader(f))
+    except Exception:
+        return None
+    araliklar = [("70+", 70, 101), ("55-69", 55, 70), ("42-54", 42, 55), ("0-41", 0, 42)]
+    grup = {ad: {"n": 0, "t": 0} for ad, _, _ in araliklar}
+    acik = 0
+    for r in rows:
+        if (r.get("tuttu") or "") == "": acik += 1; continue
+        try: sk = int(r["skor"]); tt = int(r["tuttu"])
+        except Exception: continue
+        for ad, lo, hi in araliklar:
+            if lo <= sk < hi: grup[ad]["n"] += 1; grup[ad]["t"] += tt; break
+    return dict(araliklar=[(ad, grup[ad]) for ad, _, _ in araliklar], acik=acik,
+               kapali=sum(g["n"] for g in grup.values()))
+
+def skor_karne_html():
+    k = skor_karne_oku()
+    if not k or k["kapali"] == 0:
+        acik = k["acik"] if k else 0
+        ek = f"Su an {acik} skor muhuru acik, ~10 islem gunu sonra sonuclanacak. " if acik else ""
+        return ('<div class="karne"><div class="karne-bas">🎯 GUVEN SKORU KARNESI</div>'
+                f'<div class="karne-bos">Skor motoru her is gunu TUM hisselerin Guven Skorunu (0-100) muhurlyor. {ek}'
+                'Bu ekran sunu olcecek: <b>yuksek skor verdiklerim gercekten daha cok mu tuttu?</b> '
+                'Simdilik BOS — cunku senin skorunun gercek karnesi ancak zamanla, durustce birikir. En dogru yol sabir.</div></div>')
+    h = ['<div class="karne"><div class="karne-bas">🎯 GUVEN SKORU KARNESI · skorun gerceklesme orani</div>']
+    h.append(f'<div class="karne-ac">Skor motoru {k["kapali"]} muhuru sonuclandirdi. Her skor araliginin kurulumu ~10 gunde HEDEFE mi ulasti STOP\'a mi degdi. <b>Ustteki oran alttakinden yuksekse skor ISE YARIYOR (yuksek skor = daha cok tutma). Hepsi ayniysa skor yon vermiyor demektir.</b></div>')
+    for ad, g in k["araliklar"]:
+        if g["n"] == 0:
+            h.append(f'<div class="karne-satir"><div class="karne-sh"><span class="karne-sn">Skor {ad}</span><span class="karne-pct neu">— veri yok</span></div></div>')
+            continue
+        pct = round(g["t"] / g["n"] * 100, 1)
+        rc = "up" if pct > 58 else ("dn" if pct < 42 else "neu")
+        et = "veri az, guvenme" if g["n"] < 20 else ("cogu tuttu" if pct > 58 else ("cogu tutmadi" if pct < 42 else "yazi-tura"))
+        h.append(f'<div class="karne-satir"><div class="karne-sh"><span class="karne-sn">Skor {ad}</span>'
+                 f'<span class="karne-pct {rc}">%{pct}</span></div>'
+                 f'<div class="karne-bar"><div class="{rc}" style="width:{min(100,max(0,pct)):.0f}%"></div></div>'
+                 f'<div class="karne-alt">{g["n"]} kurulum sonuclandi · {et}</div></div>')
+    h.append('<div class="karne-toplam">Bu senin gordugun skorun GERCEK karnesi — uydurma degil, gun gun birikmis. Yuksek skorlar ustte daha yesil ise skor kalibre; degilse gozden gecirilmeli.</div>')
+    if k["acik"]: h.append(f'<div class="karne-alt" style="margin-top:6px">+ {k["acik"]} skor muhuru hala acik.</div>')
     h.append('</div>')
     return "".join(h)
 
@@ -1374,6 +1425,7 @@ def v_pozisyon(s):
     H(f'<div class="card"><div class="acrow"><span class="k">Nakit</span><span>{ftl(s["cash"])}</span></div><div class="acrow"><span class="k">Mevduat</span><span class="am">{ftl(s["mevduat"])}</span></div><div class="acrow" style="border-bottom:0"><span class="k">Toplam portfoy</span><span class="{"up" if tot_val(s)>=s["deposited"] else "dn"}">{ftl(tot_val(s))}</span></div></div>')
 
 def v_muhasebe(s):
+    H(skor_karne_html())
     H(karne_html())
     sub = [("manuel", "Manuel"), ("oto", "Otomatik"), ("birlesik", "Birlesik")]
     sc = st.columns(3)
