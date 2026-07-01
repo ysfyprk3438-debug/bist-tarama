@@ -2,122 +2,128 @@
 ═══════════════════════════════════════════════════════════════
 YOL HARİTASI — APEX
 ═══════════════════════════════════════════════════════════════
-Bu dosya projenin HAFIZASIDIR. Vizyon ve "sonra" denenler burada yaşar.
-Yeni oturumda nereye gittiğimizi unutursak buraya bakarız. (Önce durum.py.)
+Bu dosya projenin HAFIZASI ve PUSULASIDIR. "Sonra yaparız"lar burada yaşar.
+Yeni oturumda nereye gittiğimizi unutursak buraya bakarız.
 
-⚠️ ESKİ FELSEFE GÖMÜLDÜ (28 Haz 2026):
-  Eski yol haritası "piyasa uyarlanır, bir edge bul ve kayan zirveyi kovala,
-  kendini yeniden icat eden bir getiri-organizması kur" diyordu. Bu anlatı
-  baştan çıkarıcıdır ve bizi tam da overfitting'e çeker. RİGORLU TEST ETTİK:
-  15dk gecikmeli perakende BIST verisiyle kovalanacak bir getiri-zirvesi YOK.
-  6 strateji ailesi + plasebo testi bunu kapattı (bkz. durum.py TEMEL_BULGU).
+═══ FELSEFE (projenin kalbi) ═══
+APEX bir getiri kâhini DEĞİL, bir RİSK PUSULASI ve karar-destek aracıdır.
+Yıllarca süren rigorlu backtest tek bir şeyi öğretti: teknik/momentum/temel
+seçim ve makro zamanlama HEPSİ out-of-sample ve placebo testlerinde çöktü.
+Geriye doğrulanmış TEK eksen kaldı: volatilite-hedefli pozisyon boyutlama —
+gerçekleşen düşüşü (drawdown) bütçe içinde tutan risk yönetimi.
 
-DÜRÜST FELSEFE (yenisi):
-  Getiri kehaneti ulaşılamaz; RİSK YÖNETİMİ ulaşılabilir. Perakendenin asıl
-  para kaybettiği yer kötü risk/pozisyon kararlarıdır — çözülebilir, dürüst
-  problem. APEX bir getiri-oracle'ı değil, REJİM-FARKINDA RİSK PUSULASI'dır.
-  Uzun vadeli hedef (regüle fon) hâlâ geçerli — ama temeli risk disiplini ve
-  mevduatı RİSK-AYARLI mütevazı geçmek, bir kâhin değil.
+Bu yüzden APEX'in amacı "zengin olmak" değil; KAYBETMEMEYİ, DİSİPLİNİ,
+ALDANMAMAYI öğrenmek ve uygulamaktır. Kâr aranırsa, yön tahmininden değil,
+iki dürüst kaynaktan aranır: (1) ELEME — çoğu fırsatı reddedip sadece
+istatistiğin lehe eğildiği nadir anlarda işlem, (2) RİSK ASİMETRİSİ — kaybı
+stop'la küçük, kazancı R/R ile büyük tutmak. Kazanılırsa, geleceği bildiği
+için değil, yanlış yerde durmadığı ve kaybını yönettiği için kazanılır.
 
-Durum kodları: ✅ yapıldı · 🎯 sıradaki · 🔭 ufuk (şartlı) · ⚰️ gömüldü (test edip elendi)
+Durum kodları: ✅ yapıldı · 🔨 olgunlaşıyor · 🎯 sıradaki · 🔭 ufuk · 🔒 veri/altyapı bekliyor
 """
 
 # ══════════════════════════════════════════════════════════════
-# TAMAMLANAN — CANLI DÜRÜST ÇEKİRDEK (v5.0, 28 Haz 2026)
+# DOĞRULANMIŞ BULGULAR (pahalı öğrenilen gerçekler — asla unutma)
+# ══════════════════════════════════════════════════════════════
+DOGRULANAN = [
+    "Vol-target pozisyon boyutlama ÇALIŞIR: tüm parametrelerde gerçekleşen MaxDD bütçe altında kaldı (gerçek BIST).",
+    "Getiri tahmini = yazı-tura. Çok sayıda göstergeyi üst üste koymak sonucu değiştirmez, sadece daha ikna edici bir yazı-tura yapar.",
+    "Makro rejim sinyali placebo B'de çöktü (55.7 persentil = medyan). Görülen üstün getiri ALPHA değil BETA'ydı (yükselen 8 yılda uzun kalmak).",
+    "Multi-timeframe, seçim, momentum, MA200 zamanlama, temel, makro zamanlama: hepsi OOS ve/veya placebo'da başarısız.",
+    "Dürüst lens: 'hangisinden kaçınmalı' > 'hangisini al'. Herkesin sinyal sandığının yön VERMEDİĞİNİ göstermek asıl değerdir.",
+]
+
+# ══════════════════════════════════════════════════════════════
+# TAMAMLANANLAR
 # ══════════════════════════════════════════════════════════════
 TAMAMLANAN = [
-    ("İleri kağıt-test günlüğü — her iş günü otonom (cron), gerçek OOS biriktirir", "✅"),
-    ("Reel-faiz rejim pusulası — politika−enflasyon, duruş (mevduat/hisse lehine)", "✅"),
-    ("Vol-hedefli risk-ölçekleme — DD bütçesi→hisse ağırlığı; gerçek BIST'te DOĞRULANDI", "✅"),
-    ("Makro oto-besleme — OECD enflasyon+faiz, statiğe fallback, statik öncelikli", "✅"),
-    ("4-çizgi karne — risk-ölçekli/duruş/endeks/mevduat, sadece kayıtlı kararlardan", "✅"),
-    ("Telegram bildirimi — günlük duruş+pozisyon telefona (yeni kayıtta)", "✅"),
-    ("Dürüstlük katmanı — her ekran kendi sınırını söyler ('kâhin değil')", "✅"),
-    ("Dayanıklılık — veri tarihi geri gitse/mükerrer gelse dedupe+sıralama düzeltir", "✅"),
+    ("APEX ana panel — 5 mod (Pusula/Havuz/Trade/Defter/Nabız), gömülü HTML", "✅"),
+    ("Vol-target pozisyon boyutlama (pozisyon.py) — doğrulanmış eksen", "✅"),
+    ("Bulut kalıcılık (Google Sheets) — cüzdan + karar defteri, cihazdan bağımsız", "✅"),
+    ("Otonom günlük ileri-test loglayıcı (gunluk_log.py + cron)", "✅"),
+    ("Telegram hikaye pipeline (projektor.py, yön/hedef içermez)", "✅"),
+    ("Sanal Borsa — native Streamlit, gerçek BIST, BIST100 havuz", "✅"),
+    ("Kural-Tabanlı İşlem Planı Motoru — yönsüz durum + destek/direnç + R/R + sicil", "✅"),
+    ("Beklenen Değer + PLACEBO — edge = kurulumun piyasa yönünün üstüne kattığı (beta/alpha ayrımı)", "✅"),
+    ("AL Sinyali — çoklu süzgeç kesişimi (giriş+sicil+R/R+edge), seçici, her zaman sicil taşır", "✅"),
+    ("Oto-simülasyon — kural-tetikli gir/çık, vol-target, yarı nakit, stop/hedef sabit, forward-test paneli", "✅"),
 ]
 
 # ══════════════════════════════════════════════════════════════
-# TEST EDİLİP ELENEN (bir daha açma — kanıt burada)
+# SIRADAKİ KATMANLAR
 # ══════════════════════════════════════════════════════════════
-ELENEN = [
-    "Çok-vade teknik sinyal — gün içi/günlük/haftalık; mevduatı+endeksi geçemedi",
-    "Kesitsel seçim (hibrit skor) — full-cycle kazanır ama OOS yüksek-faiz yarısında kaybetti",
-    "Momentum seçimi — parametre-sağlam AMA OOS-kırılgan, boom-bağımlı, MaxDD -%50",
-    "MA200 rejim zamanlaması — 59 whipsaw, en kötüsü; zamanlama kaybettirir",
-    "Temel-analiz seçimi (ROE+büyüme, point-in-time) — OOS en kötü, rejim-bağımlı",
-    "Makro reel-faiz zamanlaması — eşik+gecikmeye dayandı AMA plasebo B'de çöktü "
-    "(%55.7=medyan); mevduatı geçen şey beta, alfa değil",
+KATMANLAR = [
+    {
+        "no": 0,
+        "ad": "Forward-Test Birikimi — Tek Gerçek OOS",
+        "durum": "🎯",
+        "ozet": "Kural motoru + oto artık gerçek BIST verisinde ileri koşuyor. "
+                "Backtest'in vaadi (beklenen değer/edge) ile gerçekleşenin yüzleştiği "
+                "yer forward-test panelidir. Anlamlı yorum için haftalar-aylar veri şart.",
+        "nasil": "Oto'yu açık tut, ilerlet. Paneldeki edge yeterli işlemle olgunlaşınca "
+                 "gerçek mi yoksa yine beta mı BELLİ olur. Veri konuşur, biz tahmin etmeyiz.",
+        "onkosul": "Yok — çalışıyor. Tek gereken: SABIR.",
+    },
+    {
+        "no": 1,
+        "ad": "Oto Sonuçlarını Ana Panele Bağlama",
+        "durum": "🎯",
+        "ozet": "Sanal Borsa oto forward-test sonuçlarını ana APEX paneline (Nabız/Defter) "
+                "taşı. Ölçülmüş gerçek getiri — vaat değil, gerçekleşen. Uydurma yok.",
+        "nasil": "Oto ledger özetini (isabet, gerçekleşen R, naif/mevduata göre) ana panele "
+                 "bağla. karar_defteri (manuel) KİRLETİLMEZ — ayrı tutulur.",
+        "onkosul": "Katman 0'dan bir miktar veri birikimi.",
+    },
+    {
+        "no": 2,
+        "ad": "Kendini Kalibre Eden Eşikler",
+        "durum": "🔭",
+        "ozet": "Kural motorunun eşikleri (sicil≥52, R/R≥1.5, edge>0.03) şu an SABİT. "
+                "Yeterli forward-test verisi birikince, hangi kurulumun gerçekten edge "
+                "taşıdığını öz-ölçümden görüp eşikleri veri-temelli ayarla. DİKKAT: bu "
+                "overfit tuzağıdır — sadece placebo'yu geçen ayarlamalar meşrudur.",
+        "nasil": "Forward-test biriktikçe edge'i gerçekleşenle doğrula. Eşik değişikliği "
+                 "ancak placebo + OOS'ta korunuyorsa kabul. Aksi = eğip bükme, reddedilir.",
+        "onkosul": "🔒 Katman 0 — anlamlı örneklem (aylar).",
+    },
+    {
+        "no": 3,
+        "ad": "Gerçek Mikroyapı — AKD/Takas",
+        "durum": "🔒",
+        "ozet": "Fiyat+hacim gölgesinden gerçek emir defteri + aracı kurum dağılımı (AKD) "
+                "+ takas verisine. Toplama/dağıtım burada gölge değil somut iz bırakır. "
+                "Ama yine YÖN TAHMİNİ DEĞİL — sadece risk/kaçınma lensini zenginleştirir.",
+        "nasil": "ForInvest AKD/takas manuel arşivini besle (yinelenen açık kalem). "
+                 "stockScreener çalışıyor; settlement/order-book backend şu an kapalı.",
+        "onkosul": "🔒 ForInvest AKD/takas verisi (backend down — manuel arşiv).",
+    },
 ]
 
 # ══════════════════════════════════════════════════════════════
-# GERÇEKÇİ YOL — buradan sonrası (hepsi dürüst kalmak şartıyla)
+# AÇIK KALEMLER (kaybolmasın)
 # ══════════════════════════════════════════════════════════════
-GERCEKCI_YOL = [
-    {
-        "no": 0, "ad": "İleri Test Birikimi", "durum": "🎯",
-        "ozet": "Sistem canlı, her iş günü gerçek karar kaydediyor. Tek gerçek "
-                "doğrulama bu — geçmişe uydurulamaz. Asıl iş kod değil, SABIR.",
-        "nasil": "Haftalarca/aylarca biriksin. 4-çizgi karnenin ayrışmasını izle. "
-                 "Beklenti: pozitif reel-faiz rejiminde risk-ölçekli≈mevduat, düşük DD.",
-        "onkosul": "Yok — çalışıyor. Sadece zaman.",
-    },
-    {
-        "no": 1, "ad": "Risk Aracını Olgunlaştır", "durum": "🔭",
-        "ozet": "Doğrulanmış tek değer ekseni risk kontrolü. Onu keskinleştir.",
-        "nasil": "DD bütçesini ayarlanabilir yap; k=2.5'i ileri-veriyle kalibre et; "
-                 "makro_oto faiz vekilini (IR3TIB) politika faizine yaklaştır.",
-        "onkosul": "Biraz ileri-veri.",
-    },
-    {
-        "no": 2, "ad": "Rejim Pusulasının Değerini ÖLÇ", "durum": "🔭",
-        "ozet": "Rejim duruşu ileri-testte risk-ayarlı fayda katıyor mu? Karne yeterince "
-                "dolunca DÜRÜSTÇE ölç — katmıyorsa pusulayı sade tut, zorlama.",
-        "nasil": "Risk-ölçekli stratejinin gerçek ileri-Sharpe'ını mevduata karşı ölç. "
-                 "Plasebo dersini unutma: beta'yı alfa sanma.",
-        "onkosul": "Aylarca ileri-veri.",
-    },
-    {
-        "no": 3, "ad": "Regüle Fon (uzun vade)", "durum": "🔭",
-        "ozet": "Asıl hedef duruyor. Ama temeli RİSK DİSİPLİNİ + mevduatı risk-ayarlı "
-                "mütevazı geçmek — bir getiri-oracle değil. Kanıt = uzun ileri-test günlüğü.",
-        "nasil": "Yıllara yayılan dürüst karne + tutarlı risk kontrolü = anlatılabilir "
-                 "track record. Önce o, sonra yapısal adımlar.",
-        "onkosul": "Uzun, kesintisiz ileri-test geçmişi.",
-    },
-]
-
-# ══════════════════════════════════════════════════════════════
-# GÖMÜLEN KATMANLAR (eski vizyon — neden öldüğü açık olsun)
-# ══════════════════════════════════════════════════════════════
-GOMULEN = [
-    ("K1 Kendini kalibre eden getiri-sistemi", "⚰️",
-     "Önkoşulu 'çürüyen edge'i tespit edip ağırlık ayarla' idi. Ama ortada kalibre "
-     "edilecek bir edge yok (TEMEL_BULGU). Kalibrasyon overfitting'i hızlandırır."),
-    ("K4 Strateji ekosistemi (rakip beyinler)", "⚰️",
-     "Birden çok getiri-stratejisini yarıştırmak — her biri tek tek elendi. "
-     "Eleneni çoğaltmak edge yaratmaz, sadece overfitting yüzeyini büyütür."),
-    ("K3/K5 Mikroyapı + kalabalık psikolojisi", "⚰️",
-     "AKD/emir-defteri verisi + davranış modelleme. 15dk gecikmeli perakende "
-     "erişimle yapısal olarak ulaşılamaz; pro araçları gerektirir (Tera örneği)."),
-    ("Av skoru / robot / niyet okuyucu", "⚰️",
-     "Eski karar.py av_skoru ve teknik sinyal yığını — rigorlu testte mevduata yenildi."),
+ACIK_KALEMLER = [
+    "Doğrulanabilir makro oto-kaynak (TCMB coğrafi bloklu, OECD API kırılgan). Bulunursa cron'a ekle.",
+    "Karar Günlüğü outcome resolution — kararlar olgunlaştıkça sonuç işle (placebo baz %50; %42 altı ters-seçim uyarısı).",
+    "ForInvest AKD/takas manuel arşiv besleme.",
+    "TG_TOKEN/SUPABASE_KEY rotasyonu (kritik değil).",
 ]
 
 
 def yol_haritasi_metni():
-    s = ["APEX — YOL HARİTASI (dürüst sürüm)\n" + "=" * 50]
-    s.append(f"\nCANLI ÇEKİRDEK ({len(TAMAMLANAN)}):")
-    for ad, d in TAMAMLANAN:
-        s.append(f"  {d} {ad}")
-    s.append(f"\nTEST EDİLİP ELENEN ({len(ELENEN)}) — bir daha açma:")
-    for e in ELENEN:
-        s.append(f"  ⚰️ {e}")
-    s.append("\nGERÇEKÇİ YOL:")
-    for k in GERCEKCI_YOL:
-        s.append(f"  {k['durum']} {k['no']}: {k['ad']} — {k['ozet']}")
-    s.append("\nGÖMÜLEN ESKİ KATMANLAR:")
-    for ad, d, neden in GOMULEN:
-        s.append(f"  {d} {ad}")
+    s = ["APEX — YOL HARİTASI\n" + "=" * 50]
+    s.append(f"\nDOĞRULANAN ({len(DOGRULANAN)}):")
+    for d in DOGRULANAN:
+        s.append(f"  ✓ {d}")
+    s.append(f"\nTAMAMLANAN ({len(TAMAMLANAN)}):")
+    for ad, durum in TAMAMLANAN:
+        s.append(f"  {durum} {ad}")
+    s.append("\nKATMANLAR:")
+    for k in KATMANLAR:
+        s.append(f"  {k['durum']} K{k['no']}: {k['ad']}")
+    s.append("\nAÇIK KALEMLER:")
+    for a in ACIK_KALEMLER:
+        s.append(f"  • {a}")
     return "\n".join(s)
 
 
