@@ -1,4 +1,4 @@
-# surum 7 — APEX Sanal Borsa: BIST100 + Kural Motoru + Oto-Simulasyon (kural-tetikli gir/cik).
+# surum 8 — APEX: Kural Motoru + AL Sinyali (coklu suzgec) + BEKLENEN DEGER/Placebo + Oto.
 import os
 import json
 import math
@@ -279,25 +279,53 @@ def plan_uret(k, gun):
                 g_alt=g_alt, g_ust=g_ust, g_orta=g_orta, stop=stop, hedef=hedef,
                 rr=rr, yvol=yvol, poz=poz, neden=neden, risk_gecti=risk_gecti)
 
-def plan_sicil(k, ufuk=UFUK_PLAN):
-    """GIRIS kuralinin bu hissedeki gecmis sicili: girisde once hedefe mi stop'a mi degdi?"""
-    PX = D["PR"][k]; basari = stop_d = belirsiz = 0
-    for t in range(80, D["N"] - ufuk):
+def kurulum_analiz(k, ufuk=UFUK_PLAN):
+    """Bu kurulumun bu hissedeki SICILI + BEKLENEN DEGERI (R, komisyon dahil) + PLACEBO.
+    edge = kurulum_exp - placebo_exp = kurulumun piyasa yonunun USTUNE kattigi. Egip bukme yok."""
+    PX = D["PR"][k]; gecerli = list(range(80, D["N"] - ufuk))
+    def _sonuc(t):
+        destek, direnc, atr = sd_seviye(k, t); f = PX[t]
+        stop = destek - 1.0 * atr; hedef = direnc; risk_o = (f - stop) / f
+        if risk_o <= 0 or hedef <= f: return None
+        cikis = PX[t + ufuk]; tip = "belirsiz"
+        for j in range(t + 1, t + ufuk + 1):
+            if PX[j] <= stop: cikis = stop; tip = "stop"; break
+            if PX[j] >= hedef: cikis = hedef; tip = "hedef"; break
+        return ((cikis - f) / f - 2 * COM) / risk_o, tip
+    hedef_s = stop_s = belirsiz_s = 0; R = []
+    for t in gecerli:
         destek, direnc, atr = sd_seviye(k, t); f = PX[t]
         if not _giris_bolgesinde(f, destek, atr): continue
-        stop = destek - 1.0 * atr; hedef = direnc
-        if hedef <= f or stop >= f: continue
-        sonuc = None
-        for j in range(t + 1, t + ufuk + 1):
-            if PX[j] <= stop: sonuc = "stop"; break
-            if PX[j] >= hedef: sonuc = "hedef"; break
-        if sonuc == "hedef": basari += 1
-        elif sonuc == "stop": stop_d += 1
-        else: belirsiz += 1
-    tot = basari + stop_d
-    isabet = round(basari / tot * 100) if tot else 0
-    return dict(n=basari + stop_d + belirsiz, hedef=basari, stop=stop_d,
-                belirsiz=belirsiz, isabet=isabet, kapanan=tot)
+        r = _sonuc(t)
+        if r is None: continue
+        Rv, tip = r
+        if tip == "hedef": hedef_s += 1
+        elif tip == "stop": stop_s += 1
+        else: belirsiz_s += 1
+        R.append(Rv)
+    n = len(R); exp = sum(R) / n if n else 0
+    import random as _r; _r.seed(k * 7 + 1); plc = []
+    for _ in range(min(max(n * 4, 40), 300)):
+        r = _sonuc(_r.choice(gecerli))
+        if r: plc.append(r[0])
+    placebo = sum(plc) / len(plc) if plc else 0
+    edge = exp - placebo
+    kaz = [x for x in R if x > 0]; kyb = [x for x in R if x <= 0]
+    tot = hedef_s + stop_s; isabet = round(hedef_s / tot * 100) if tot else 0
+    return dict(n=n, kapanan=tot, hedef=hedef_s, stop=stop_s, belirsiz=belirsiz_s, isabet=isabet,
+                exp=exp, placebo=placebo, edge=edge, lehte=(edge > 0.05 if n >= 10 else None),
+                ort_kazanc=sum(kaz) / len(kaz) if kaz else 0, ort_kayip=sum(kyb) / len(kyb) if kyb else 0,
+                kazanan=len(kaz), kaybeden=len(kyb))
+
+def al_sinyali(k, gun, ka=None, p=None):
+    """Coklu suzgec kesisimi. Sadece: giris aktif + olgun + sicil>=55 + R/R>=1.8 + edge>0.05.
+    Cogu hissede CIKMAZ. Ciktiginda bile garanti degil — sicilini tasir."""
+    if p is None: p = plan_uret(k, gun)
+    if p["durum"] != "GIRIS_AKTIF": return dict(onay=False, p=p, ka=ka, sart={})
+    if ka is None: ka = kurulum_analiz(k)
+    sart = dict(olgun=ka["kapanan"] >= 10, sicil=ka["isabet"] >= 52,
+                rr=p["rr"] >= 1.5, edge=(ka["n"] >= 10 and ka["edge"] > 0.03))
+    return dict(onay=all(sart.values()), p=p, ka=ka, sart=sart)
 
 def guven_yorum(sc):
     if sc["kapanan"] < 8: return ("OLGUNLASMADI", "neu", f"{sc['kapanan']} kapanan · veri az, guvenme")
@@ -322,13 +350,23 @@ _DURUM_META = {
 }
 
 def plan_html(k, gun):
-    p = plan_uret(k, gun); sc = plan_sicil(k); gy = guven_yorum(sc)
+    p = plan_uret(k, gun); ka = kurulum_analiz(k); gy = guven_yorum(ka)
     baslik, renk, izah = _DURUM_META[p["durum"]]
     tam_plan = p["durum"] in ("GIRIS_AKTIF", "RISK_FILTRE")
+    asin = al_sinyali(k, gun, ka, p) if p["durum"] == "GIRIS_AKTIF" else None
     h = ['<div class="card"><div class="sec">ISLEM PLANI · KURAL MOTORU</div>']
+    if asin and asin["onay"]:
+        h.append('<div class="alsin"><span class="alt">★ AL SINYALI</span><span class="als">tum suzgeclerden gecti</span></div>')
+        h.append(f'<div class="alacik">Giris aktif + sicil %{ka["isabet"]} + R/R {p["rr"]:.1f} + kurulum placeboyu geciyor (edge {ka["edge"]:+.2f}R). Kurallarim burada AL SIMULE ETTI. Ama bu kurulum bu hissede {ka["n"]} kez yasandi, {ka["kazanan"]} kazandi — GARANTI degil.</div>')
     h.append(f'<div class="pdur {renk}"><span class="pdt">{baslik}</span></div>')
     h.append(f'<div class="pizah">{izah}</div>')
-    # plan rakamlari (durum-bagimli)
+    if asin and not asin["onay"]:
+        eksik = []
+        if not asin["sart"]["olgun"]: eksik.append("yeterli gecmis yok")
+        if not asin["sart"]["sicil"]: eksik.append(f"sicil dusuk (%{ka['isabet']})")
+        if not asin["sart"]["rr"]: eksik.append(f"R/R dusuk ({p['rr']:.1f})")
+        if not asin["sart"]["edge"]: eksik.append("kurulum placeboyu gecemiyor")
+        h.append(f'<div class="pgec">Giris bolgesinde ama AL suzgecinden gecemedi — eksik: {", ".join(eksik)}.</div>')
     if tam_plan:
         h.append('<div class="pgrid">')
         h.append(f'<div class="pg"><div class="pk">giris bolgesi</div><div class="pv">₺{p["g_alt"]:.2f}–{p["g_ust"]:.2f}</div></div>')
@@ -349,18 +387,25 @@ def plan_html(k, gun):
         h.append('</div>')
         if p["durum"] == "BEKLE":
             h.append(f'<div class="pgec">Plan olusmasi icin fiyatin ~₺{p["destek"]:.2f} giris bolgesine gelmesi gerekir.</div>')
-    # SICIL seridi (her zaman) — kullaniciyi koru
+    # SICIL + BEKLENEN DEGER (tek blok) — kullaniciyi koruyan cekirdek
     h.append('<div class="psic">')
-    h.append(f'<div class="psh"><span class="pshl">BU KURAL · BU HISSE · SON 1 YIL SICILI</span><span class="vlab {gy[1]}">{gy[0]}</span></div>')
-    if sc["kapanan"] > 0:
-        h.append(f'<div class="psbar"><div class="st" style="width:{sc["isabet"]}%"></div><div class="sr" style="width:{100-sc["isabet"]}%"></div></div>')
-        h.append(f'<div class="psd"><span class="up">hedefe ulasti {sc["hedef"]}</span><span class="dn">stop {sc["stop"]}</span><span class="neu">belirsiz {sc["belirsiz"]}</span><span class="neu">isabet ~%{sc["isabet"]}</span></div>')
+    h.append(f'<div class="psh"><span class="pshl">BU KURULUM · BU HISSE · SON 1 YIL</span><span class="vlab {gy[1]}">{gy[0]}</span></div>')
+    if ka["kapanan"] > 0:
+        h.append(f'<div class="psbar"><div class="st" style="width:{ka["isabet"]}%"></div><div class="sr" style="width:{100-ka["isabet"]}%"></div></div>')
+        h.append(f'<div class="psd"><span class="up">hedef {ka["hedef"]}</span><span class="dn">stop {ka["stop"]}</span><span class="neu">belirsiz {ka["belirsiz"]}</span><span class="neu">isabet ~%{ka["isabet"]}</span></div>')
     else:
         h.append('<div class="psd"><span class="neu">bu hissede kural henuz hic kapanmadi — sicil yok</span></div>')
-    h.append(f'<div class="pswhy">{gy[2]}</div>')
+    if ka["n"] >= 10:
+        ec = "up" if ka["edge"] > 0.05 else ("dn" if ka["edge"] < -0.05 else "neu")
+        eyaz = "MATEMATIK LEHTE" if ka["edge"] > 0.05 else ("ALEYHTE · kacin" if ka["edge"] < -0.05 else "NOTR ≈ basabas")
+        h.append(f'<div class="bded"><div class="bdh"><span class="bdl">BEKLENEN DEGER</span><span class="vlab {ec}">{eyaz}</span></div>')
+        h.append(f'<div class="psd"><span class="neu">ham {ka["exp"]:+.2f}R</span><span class="neu">piyasa payi {ka["placebo"]:+.2f}R</span><span class="{ec}">kurulum katkisi (edge) {ka["edge"]:+.2f}R</span></div>')
+        h.append(f'<div class="pswhy">{ka["n"]} islem · kazaninca +{ka["ort_kazanc"]:.2f}R, kaybedince {ka["ort_kayip"]:.2f}R. "Edge" = kurulumun piyasa yonunun USTUNE kattigi. ~0 ise kazanc sadece piyasadan gelir, kurulumun katkisi yok.</div></div>')
+    else:
+        h.append(f'<div class="pswhy">{gy[2]}</div>')
     h.append('</div>')
     h.append(f'<div class="pneden"><span class="lab">Neden bu durum</span> {", ".join(p["neden"])}.</div>')
-    h.append('<div class="puyari">Bu bir tavsiye DEGIL. Kurallarimin bu piyasada SIMULE edecegi aksiyon + gecmis sicili. Yon garantisi yok.</div>')
+    h.append('<div class="puyari">Bu bir tavsiye DEGIL. Kurallarimin bu veride SIMULE edecegi aksiyon + olculmus gecmis. Yon garantisi yok; her sayi kendi orneklemini tasir.</div>')
     h.append('</div>')
     return "".join(h)
 
@@ -502,31 +547,43 @@ def oto_cikis_kontrol(s):
                 logtx(s, type=("Oto STOP cikis" if cikis == "stop" else "Oto HEDEF cikis"),
                       k=int(k), price=f, amt=net, src="A")
 
-def apex_reb(s):
-    """KURAL-TABANLI oto dengeleme: GIRIS_AKTIF evrenine vol-target ile %50 sermaye dagit.
-    Yon tahmini yok — kural motorunun simule edecegi aksiyon. Giris aninda stop/hedef saklanir."""
+def oto_giris_kontrol(s):
+    """Her gun: AL SINYALI olan + elde olmayan hisseye gir (nadir firsati kacirma). Cogu gun bos."""
+    if s["cash"] < 100: return
+    base = s["cash"] + pv(s, s["posA"]); hedef = base * 0.5
+    bos = max(0, hedef - pv(s, s["posA"]))
+    if bos < 100: return  # %50 sermaye dolu — yeni giris arama (97 hisse taramasini atla)
     gun = s["day"]
-    evren = [k for k in range(D["NST"]) if plan_uret(k, gun)["durum"] == "GIRIS_AKTIF"]
-    # kural artik giris demiyorsa (evren disi) oto pozisyonu kapat
-    for k in list(s["posA"].keys()):
-        if int(k) not in evren:
-            net = _sell(s, s["posA"], k, 1.0, "A")
-            if net is not None:
-                logtx(s, type="Oto denge cikis", k=int(k), price=price(s, k), amt=net, src="A")
-    if not evren:
-        logtx(s, type="Oto: giris bolgesinde hisse yok", amt=0, src="A"); return
-    base = s["cash"] + pv(s, s["posA"]); tw = {}; ss = 0.0
-    for k in evren:
+    adaylar = [k for k in range(D["NST"])
+               if str(k) not in s["posA"] and plan_uret(k, gun)["durum"] == "GIRIS_AKTIF"]
+    yeni = [k for k in adaylar if al_sinyali(k, gun)["onay"]]
+    if not yeni: return
+    tw = {}; ss = 0.0
+    for k in yeni:
         iv = 1 / max(vol_at(D["PR"][k], gun), 0.05); tw[k] = iv; ss += iv
-    for k in evren:
-        kk = str(k); tv = base * 0.5 * tw[k] / ss
-        cur = s["posA"][kk]["qty"] * price(s, k) if kk in s["posA"] else 0
-        diff = tv - cur
+    for k in yeni:
+        pay = bos * tw[k] / ss
+        if pay > 100 and _buy(s, s["posA"], k, min(pay, s["cash"] / (1 + COM) - 1)):
+            p = plan_uret(k, gun); kk = str(k)
+            s["posA"][kk]["stop"] = p["stop"]; s["posA"][kk]["hedef"] = p["hedef"]
+            logtx(s, type="Oto AL girisi", k=int(k), price=price(s, k), amt=-pay, src="A")
+
+def apex_reb(s):
+    """21 gunde bir: mevcut oto pozisyonlari vol-target ile yeniden boyutla. Giris ayrica gunluk."""
+    gun = s["day"]
+    if not s["posA"]: 
+        logtx(s, type="Oto: pozisyon yok", amt=0, src="A"); return
+    base = s["cash"] + pv(s, s["posA"]); hedef = base * 0.5
+    tw = {}; ss = 0.0
+    for k in s["posA"]:
+        iv = 1 / max(vol_at(D["PR"][int(k)], gun), 0.05); tw[k] = iv; ss += iv
+    for k in list(s["posA"].keys()):
+        tv = hedef * tw[k] / ss; cur = s["posA"][k]["qty"] * price(s, int(k)); diff = tv - cur
         if diff > 50:
-            if _buy(s, s["posA"], k, min(diff, s["cash"] / (1 + COM) - 1)):
-                p = plan_uret(k, gun)
-                s["posA"][kk]["stop"] = p["stop"]; s["posA"][kk]["hedef"] = p["hedef"]
-    logtx(s, type="Oto kural dengeledi", amt=0, src="A")
+            _buy(s, s["posA"], int(k), min(diff, s["cash"] / (1 + COM) - 1))
+        elif diff < -50 and cur > 0:
+            _sell(s, s["posA"], int(k), min(1.0, -diff / cur), "A")
+    logtx(s, type="Oto vol-target dengeledi", amt=0, src="A")
 
 def advance(s, days):
     for _ in range(days):
@@ -542,8 +599,9 @@ def advance(s, days):
             s["naifGhost"] *= (1 + nr)
         s["day"] += 1
         if s["auto"] and s["started"]:
-            oto_cikis_kontrol(s)  # HER gun risk kontrol (stop/hedef)
-            if (s["day"] - s["startDay"]) % REB == 0: apex_reb(s)  # 21 gunde bir giris taramasi
+            oto_cikis_kontrol(s)   # stop/hedef (her gun)
+            oto_giris_kontrol(s)   # yeni AL sinyali (her gun, firsat kacirma)
+            if (s["day"] - s["startDay"]) % REB == 0: apex_reb(s)  # vol-target dengeleme
 
 def deltas(s):
     if not s["started"]: return None
@@ -868,6 +926,13 @@ div[data-testid="stNumberInput"] input{font-family:'IBM Plex Mono',monospace;bac
 .pneden{font-family:'Hanken Grotesk';font-size:10.5px;color:#9aa0aa;line-height:1.5;margin-bottom:9px;}
 .pneden .lab{font-family:'IBM Plex Mono';font-size:7.5px;letter-spacing:.1em;text-transform:uppercase;color:#5A616B;border:1px solid rgba(232,228,216,.08);padding:1px 5px;border-radius:4px;margin-right:5px;}
 .puyari{font-family:'Hanken Grotesk';font-size:9.5px;color:#7E848E;line-height:1.5;background:rgba(232,184,75,.04);border:1px solid rgba(232,184,75,.16);border-radius:9px;padding:8px 10px;}
+.alsin{display:flex;align-items:center;gap:8px;background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.45);border-radius:10px;padding:9px 12px;margin-bottom:7px;}
+.alsin .alt{font-family:'Archivo';font-weight:800;font-size:15px;color:#2DD4BF;letter-spacing:.03em;}
+.alsin .als{font-family:'IBM Plex Mono';font-size:9px;color:#2DD4BF;opacity:.8;margin-left:auto;}
+.alacik{font-family:'Hanken Grotesk';font-size:10.5px;color:#9aa0aa;line-height:1.55;margin-bottom:11px;}
+.bded{margin-top:9px;border-top:1px solid rgba(232,228,216,.08);padding-top:9px;}
+.bdh{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+.bdl{font-family:'Archivo';font-weight:700;font-size:8px;letter-spacing:.09em;color:#E8B84B;flex:1;}
 .bk{font-family:'IBM Plex Mono';font-size:11px;color:#7E848E;}
 h3.hh{font-family:'Archivo';font-weight:800;font-size:22px;margin:2px 0;}
 </style>
@@ -911,7 +976,7 @@ def main():
     if c[2].button("Hafta +1", key="adv5"): advance(s, 5); save_state(s); st.rerun()
     if c[3].button(("Oto: ACIK" if s["auto"] else "Oto: kapali"), key="auto", type=("primary" if s["auto"] else "secondary")):
         s["auto"] = not s["auto"]; s["msg"] = "Otomatik " + ("ACIK — sen yokken APEX devam eder" if s["auto"] else "kapali")
-        if s["auto"] and s["started"]: apex_reb(s)
+        if s["auto"] and s["started"]: oto_giris_kontrol(s); apex_reb(s)
         save_state(s); st.rerun()
 
     if s.get("msg"): H(f'<div class="msg">{s["msg"]}</div>')
@@ -1023,7 +1088,7 @@ def v_muhasebe(s):
                  ("Manuel toplam", ftl(pv(s, s["posM"]) + s["mevduat"]))]))
     elif s["acctTab"] == "oto":
         H('<div class="sec" style="border:0;margin:4px 2px">OTOMATIK DEFTER · APEX</div>')
-        H('<div class="warnb" style="margin-bottom:10px"><b>Oto nasil calisir (kural-tabanli):</b> Yon TAHMIN ETMEZ. Kural motorunun <b>"Giris Bolgesi Aktif"</b> dedigi hisselere girer; pozisyonu <b>oynakliga gore</b> boyutlar (vol-target), sermayenin ~%50&#39;sini dagitir, yarisi nakitte/guvende kalir. Giris aninda stop ve hedef sabitlenir. <b>Her gun</b> stop/gecersizlik veya hedef tetiklenince cikar. ~21 gunde bir giris bolgesini yeniden tarar. Her islem deftere yazilir. Bu canli piyasa degil — <b>kurallarimin bu veride SIMULE edecegi aksiyon.</b></div>')
+        H('<div class="warnb" style="margin-bottom:10px"><b>Oto nasil calisir (kural + suzgec):</b> Yon TAHMIN ETMEZ. Sadece <b>AL SINYALI</b> veren hisselere girer = giris bolgesi aktif + sicil ≥%52 + R/R ≥1.5 + <b>edge>0</b> (kurulum placeboyu geciyor, yani kazanc piyasa yonunden fazlasi). Cogu gun hic sinyal cikmaz — secici. Pozisyonu oynakliga gore boyutlar (vol-target), yari sermaye nakitte kalir, giris aninda stop/hedef sabitlenir, her gun stop/hedef kontrol eder, ~21 gunde bir tarar. Her islem deftere yazilir. <b>Kar amaci var ama kar GARANTISI yok</b> — sadece istatistigin lehe egildigi anlarda, riski kontrollu, simule eder.</div>')
         H(block([("APEX pozisyon", ftl(pv(s, s["posA"]))),
                  ("Gerceklesen K/Z", fsig(s["realizedA"]), "up" if s["realizedA"] >= 0 else "dn"),
                  ("Gerceklesmemis K/Z", fsig(unrealA), "up" if unrealA >= 0 else "dn"),
