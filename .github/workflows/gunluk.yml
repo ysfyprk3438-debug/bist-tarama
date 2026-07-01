@@ -34,7 +34,9 @@ jobs:
 
       - name: karar gunlugu (vadesi dolanlari kapat)
         run: python app.py karar || echo "karar calismadi, devam"
-
+      - name: skor karnesi (muhurle + sonuclandir)
+        run: python skor_motoru.py || echo "skor calismadi, devam"
+        
       - name: degisiklikleri commit et
         run: |
           git config user.name "apex-bot"
