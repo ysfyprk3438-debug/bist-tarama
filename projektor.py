@@ -1,7 +1,6 @@
-# projektor.py — Günlük bağlam özetini Telegram'a yollar (Projektör son tugla)
-# Projektör yol haritası son adım (CLAUDE.md §7). Bağlam + nötr rejim notu;
-# al/sat/tahmin/hedef/skor ASLA (CLAUDE.md §6 + §2).
-# Varsayılan: kuru çalışma (basar, göndermez). --send veya PROJEKTOR_SEND=1 ile gönderir.
+# projektor.py — Gunluk durum ozetini Telegram'a yollar (SADE DIL surumu)
+# al/sat/tahmin/hedef/skor ASLA. Sadece "bugun ne oldu" — olgu.
+# Varsayilan: kuru calisma (basar, gondermez). --send veya PROJEKTOR_SEND=1 ile gonderir.
 
 import logging
 import os
@@ -13,96 +12,83 @@ from datetime import date
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 _log = logging.getLogger(__name__)
 
+# rejim durusunu HERKESIN anlayacagi dile cevir
+_DURUS_SADE = {
+    "MEVDUAT LEHINE": "faiz tarafi one cikiyor (mevduat cazip)",
+    "HISSE LEHINE": "hisse tarafi one cikiyor",
+    "NOTR": "belirgin bir taraf yok, dengeli",
+}
+
 
 def mesaj_kur(sonuc, hikaye, rejim) -> str:
-    """Bağlam özetini saf metin olarak üretir (saf fonksiyon, yan etki yok).
-
-    Yalnızca olgusal bilgi: gerçekleşen günlük %değişim + makro reel faiz.
-    Al/sat/tahmin/hedef/skor içermez.
-    """
+    """Gunun durum ozetini SADE dille, saf metin uretir (yan etki yok).
+    Sadece olgu: gerceklesen gunluk %degisim + makro reel faiz. Tavsiye YOK."""
     tarih = sonuc.get("tarih", date.today().isoformat())
     kap_durum = sonuc.get("kap_durum", "kapali")
     kayitlar = sonuc.get("kayitlar", [])
     hikayeler = hikaye.get("hikayeler", [])
 
-    satirlar = []
+    s = []
+    s.append(f"APEX gunluk ozet — {tarih}")
+    s.append("(Bu bir haber ozetidir; ne al ne sat demez.)")
+    s.append("")
 
-    # 1. Başlık
-    satirlar.append(f"APEX Baglam Ozeti — {tarih}")
-    satirlar.append("")
-
-    # 2. Rejim satırı (nötr olgu, yalnız gerçekleşen makro sayılar)
+    # Piyasa ruzgari — sade
     durus = rejim.get("durus", "NOTR")
     reel = rejim.get("reel", 0.0)
     isaret = "+" if reel >= 0 else ""
-    satirlar.append(f"Rejim: {durus} (reel %{isaret}{reel})")
-    satirlar.append("")
+    s.append(f"Piyasa ruzgari: {_DURUS_SADE.get(durus, durus.lower())}.")
+    s.append(f"(Reel faiz %{isaret}{reel} — faizin enflasyondan farki.)")
+    s.append("")
 
-    # 3. Görünür sebepli hareketler (hikaye_motor LLM yorumları)
+    # Sebebi belli hareketler
     if hikayeler:
-        satirlar.append("Gorunur sebepli hareketler:")
+        s.append("Bugun sebebi belli olan hareketler:")
         for h in hikayeler:
-            ch = h.get("ch", 0.0)
-            tk = h.get("tk", "")
-            yorum = h.get("yorum", "")
-            satirlar.append(f"• {tk} %{ch:+.1f} — {yorum}")
-        satirlar.append("")
+            ch = h.get("ch", 0.0); tk = h.get("tk", ""); yorum = h.get("yorum", "")
+            s.append(f"• {tk} %{ch:+.1f} — {yorum}")
+        s.append("")
 
-    # 4. Sebepsiz sert hareketler (KAP açık ama açıklama yok)
+    # Sebebi belli OLMAYAN sert hareketler
     sebepsiz = [r for r in kayitlar if r.get("sinif") == "sebepsiz"]
     if sebepsiz:
-        satirlar.append("Gorunur KAP sebebi olmayan hareketler (spekulatif olabilir):")
+        s.append("Sebebi belli OLMAYAN sert hareketler (dikkat — dedikodu/spekulasyon olabilir):")
         for r in sebepsiz:
-            ch = r.get("ch", 0.0)
-            tk = r.get("tk", "")
-            satirlar.append(f"• {tk} %{ch:+.1f} (gorunur KAP sebebi yok)")
-        satirlar.append("")
+            ch = r.get("ch", 0.0); tk = r.get("tk", "")
+            s.append(f"• {tk} %{ch:+.1f} (ortada acik bir haber yok)")
+        s.append("")
 
-    # 5. KAP erişilemedi uyarısı
     if kap_durum == "kapali":
-        satirlar.append("KAP erisilemedi; sebep analizi bugun atlandi.")
-        satirlar.append("")
+        s.append("Haber kaynagina ulasilamadi — bugun sebep analizi yapilamadi.")
+        s.append("")
 
-    # Eşik üstü hareket yoksa bilgi notu (KAP açık ama hiç eşik geçilmemiş)
     hareketli_n = sum(1 for r in kayitlar if r.get("hareketli"))
     if not hikayeler and not sebepsiz and hareketli_n == 0:
-        satirlar.append("Bugun esik ustu belirgin hareket gorunmuyor.")
-        satirlar.append("")
+        s.append("Bugun dikkat cekecek belirgin bir hareket gorunmuyor. Sakin gun.")
+        s.append("")
 
-    # 6. Kapanış damgası (her mesajda bulunur)
-    satirlar.append(
-        "Bu bir baglam ozetidir, yatirim tavsiyesi degildir. "
-        "Pozisyon/risk disiplini ayridir."
-    )
-
-    return "\n".join(satirlar)
+    s.append("Ozet bu kadar. APEX yon tahmini yapmaz, kazandirma vaadi vermez — "
+             "sadece bugun ne oldugunu ozetler. Ne alacagina sen karar verirsin.")
+    return "\n".join(s)
 
 
 def gonder_telegram(metin) -> bool:
-    """urllib.request ile Telegram'a POST atar. Token/chat env'den alınır.
-
-    Çökme yok: secret eksikse veya API hatası olursa log + False döner.
-    """
+    """Telegram'a POST. Token/chat env'den. Cokme yok: eksikse log + False."""
     token = os.environ.get("TELEGRAM_TOKEN", "")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
-
     if not token or not chat_id:
-        _log.warning(
-            "TELEGRAM_TOKEN veya TELEGRAM_CHAT_ID ortamda tanimli degil — gonderim atlandi."
-        )
+        _log.warning("TELEGRAM_TOKEN veya TELEGRAM_CHAT_ID tanimli degil — gonderim atlandi.")
         return False
-
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     veri = urllib.parse.urlencode({"chat_id": chat_id, "text": metin}).encode("utf-8")
-
     try:
         istek = urllib.request.Request(url, data=veri, method="POST")
         with urllib.request.urlopen(istek, timeout=15) as yanit:
             durum = yanit.getcode()
         if durum == 200:
-            _log.info("Telegram mesaji basariyla gonderildi.")
+            _log.info("Telegram mesaji gonderildi.")
             return True
-        _log.error(f"Telegram API beklenmeyen durum kodu: {durum}")
+        _log.error(f"Telegram API beklenmeyen durum: {durum}")
         return False
     except Exception as e:
         _log.error(f"Telegram gonderimi basarisiz: {e}")
@@ -110,41 +96,26 @@ def gonder_telegram(metin) -> bool:
 
 
 def main(send=False):
-    """Baglamı toplar, hikayeler, mesaj kurar; send=True ise Telegram'a yollar.
-
-    KORUMA KABUGU: ana akistaki herhangi bir adim patlarsa (baglam_motor /
-    hikaye_motor / app importu, veri cekimi, KAP erisimi vb.) cron COKMEZ;
-    hata loglanir ve None doner. Boylece GitHub Actions her gun kirmizi vermez.
-    """
+    """Baglami toplar, hikayeler, mesaj kurar; send=True ise yollar.
+    KORUMA KABUGU: herhangi bir adim patlarsa cron COKMEZ; hata loglanir, None doner."""
     try:
-        _log.info("baglam_motor.topla() calistiriliyor...")
         from baglam_motor import topla
-
         sonuc = topla()
-
-        _log.info("hikaye_motor.hikayele() calistiriliyor...")
         from hikaye_motor import hikayele
-
         hikaye = hikayele(sonuc=sonuc)
-
-        _log.info("app.rejim_hesapla() calistiriliyor...")
         from app import rejim_hesapla
-
         rejim = rejim_hesapla(date.today())
-
         metin = mesaj_kur(sonuc, hikaye, rejim)
     except Exception as e:
         _log.error(f"Projektor ana akis basarisiz, bugun atlandi: {e}")
         return None
 
     if send:
-        _log.info("--send modu: Telegram'a gonderiliyor...")
-        basarili = gonder_telegram(metin)
-        if not basarili:
+        _log.info("--send: Telegram'a gonderiliyor...")
+        if not gonder_telegram(metin):
             _log.warning("Gonderim basarisiz veya atlandi.")
     else:
         print(metin)
-
     return metin
 
 
@@ -153,6 +124,5 @@ if __name__ == "__main__":
     try:
         main(send=send)
     except Exception as e:
-        # Son kalkan: beklenmeyen her sey burada yutulur; cron temiz (exit 0) cikar.
         _log.error(f"Beklenmeyen hata; cron yine de temiz cikiyor: {e}")
         sys.exit(0)
