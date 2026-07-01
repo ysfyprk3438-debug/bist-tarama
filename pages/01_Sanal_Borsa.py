@@ -1,4 +1,4 @@
-# surum 10 — APEX Sanal Borsa: Havuz AL Sinyali taramasi (motor pasiften aktife).
+# surum 11 — APEX Sanal Borsa: Havuz hisse arama motoru + text_input tema.
 import os
 import json
 import math
@@ -850,6 +850,9 @@ div[data-testid="stHorizontalBlock"]{flex-wrap:nowrap!important;gap:5px!importan
 div[data-testid="stHorizontalBlock"]>div[data-testid="stColumn"],
 div[data-testid="stHorizontalBlock"]>div[data-testid="column"]{min-width:0!important;flex:1 1 0!important;width:auto!important;}
 div[data-testid="stNumberInput"] input{font-family:'IBM Plex Mono',monospace;background:#06080B;color:#E8E4D8;border:1px solid rgba(232,228,216,.14);}
+div[data-testid="stTextInput"] input{font-family:'IBM Plex Mono',monospace;font-size:13px;background:#0C1117;color:#E8E4D8;border:1px solid rgba(232,228,216,.14);border-radius:9px;padding:9px 12px;}
+div[data-testid="stTextInput"] input:focus{border-color:rgba(45,212,191,.45);box-shadow:none;}
+div[data-testid="stTextInput"] input::placeholder{color:#5A616B;}
 .ax{font-family:'IBM Plex Mono',monospace;}
 .top{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
 .top .h1{font-family:'Archivo';font-weight:800;font-size:19px;}
@@ -1038,7 +1041,16 @@ def v_havuz(s):
         H(h)
     else:
         H('<div class="altar bos"><div class="altarh neu">AL SINYALI · SU AN YOK</div><div class="altarn">Hicbir hisse tum suzgecten gecmiyor. Bu NORMAL — cogu gun boyle. Kurallar firsat olmayinca susar; sistem seni bos yere islem yaptirmaz.</div></div>')
+    # HISSE ARAMA
+    ara = st.text_input("ara", key="havuz_ara", label_visibility="collapsed",
+                        placeholder="🔎 Hisse ara (orn THYAO)").strip().upper()
     arr = havuz_scores()
+    if ara:
+        arr = [(k, S) for (k, S) in arr if ara in D["TK"][k]]
+        if arr:
+            H(f'<div class="lbl" style="margin:2px 2px 8px">"{ara}" · {len(arr)} sonuc</div>')
+        else:
+            H(f'<div class="warnb">"{ara}" ile eslesen hisse yok. Kodu kontrol et (orn THYAO, GARAN, ASELS).</div>')
     cols = st.columns(2)
     for idx, (k, S) in enumerate(arr):
         col = cols[idx % 2]
