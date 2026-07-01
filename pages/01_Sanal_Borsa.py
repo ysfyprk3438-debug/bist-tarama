@@ -1,4 +1,4 @@
-# surum 14 — APEX denetim duzeltmeleri: destek-direnc kenar durum + AL sinyali gurultu-ustu esikler.
+# surum 15 — APEX Guven Skoru (0-100 saglamlik) + sade dil + Piyasa Nabzi + davranissal ayna + ferah gorunum.
 import os
 import json
 import math
@@ -227,6 +227,49 @@ def al_tarama(s):
     st.session_state["_altara"] = ((gun, D["N"], D["NST"]), sonuc)
     return sonuc
 
+def piyasa_nabzi(s):
+    """Piyasanin OLCULEN durumu (tahmin degil, gozlem): kac hisse ortalama ustunde,
+    oynaklik, yukselen/dusen. Cache'li."""
+    gun = s["day"]; key = (gun, D["N"], D["NST"])
+    c = st.session_state.get("_nabiz")
+    if c and c[0] == key: return c[1]
+    ustunde = sum(1 for k in range(D["NST"]) if D["PR"][k][gun] > D["MA50"][k][gun])
+    oran = ustunde / D["NST"] * 100
+    vols = [vol_at(D["PR"][k], gun) for k in range(D["NST"])]
+    ort_vol = sum(vols) / len(vols)
+    degs = [today_pct(s, k) for k in range(D["NST"])]
+    yuk = sum(1 for d in degs if d > 0)
+    r = dict(oran=oran, ort_vol=ort_vol, yukselen=yuk, dusen=D["NST"] - yuk, toplam=D["NST"])
+    st.session_state["_nabiz"] = (key, r)
+    return r
+
+def nabiz_html(s):
+    n = piyasa_nabzi(s)
+    if n["oran"] >= 70: ist = ("YUKSEK", "up", "cogu hisse yukselis egiliminde")
+    elif n["oran"] <= 30: ist = ("DUSUK", "dn", "cogu hisse dusus egiliminde")
+    else: ist = ("KARARSIZ", "neu", "piyasa dengeli, net yon yok")
+    vlab = "sakin" if n["ort_vol"] < 0.4 else ("orta" if n["ort_vol"] < 0.6 else "gergin")
+    # DAVRANISSAL AYNA — yon tahmini DEGIL, kalabaligin tuzagini gosterip seni disipline cagirir
+    if n["oran"] >= 75:
+        ayna = "Piyasa asiri iyimser. Kalabaligin en cok costugu ve en cok hata yaptigi bolge burasi. Yukselen hisseyi KOVALAMA — kendi kurallarina sadik kal."; ac = "dn"
+    elif n["oran"] <= 25:
+        ayna = "Piyasa asiri karamsar. Panikle satmak tam bu bolgede yapilan en buyuk hatadir. Elindeki stop seni zaten korur — sogukkanli ol."; ac = "dn"
+    elif n["ort_vol"] >= 0.6:
+        ayna = "Piyasa cok oynak, kalabalik gergin. Asiri hareketli gunlerde islem YAPMAMAK da bir karardir — disiplin budur."; ac = "am"
+    else:
+        ayna = "Piyasa sakin ve dengeli. Sabirla firsat beklemek icin iyi ortam — acele etme."; ac = "neu"
+    h = ['<div class="nabiz">']
+    h.append(f'<div class="nabiz-bas">PIYASA NABZI · {n["toplam"]} HISSE</div>')
+    h.append('<div class="nabiz-grid">'
+             f'<div class="nab-h"><div class="nab-v {ist[1]}">%{n["oran"]:.0f}</div><div class="nab-k">ortalama ustunde</div></div>'
+             f'<div class="nab-h"><div class="nab-v">{vlab}</div><div class="nab-k">oynaklik</div></div>'
+             f'<div class="nab-h"><div class="nab-v up">{n["yukselen"]}</div><div class="nab-k">bugun ▲</div></div>'
+             f'<div class="nab-h"><div class="nab-v dn">{n["dusen"]}</div><div class="nab-k">bugun ▼</div></div></div>')
+    h.append(f'<div class="nabiz-ist {ist[1]}">Risk istahi: <b>{ist[0]}</b> — {ist[2]}.</div>')
+    h.append(f'<div class="nabiz-ayna {ac}"><b>Ayna:</b> {ayna}</div>')
+    h.append('</div>')
+    return "".join(h)
+
 # ================= KURAL-TABANLI ISLEM PLANI MOTORU =================
 # Yon TAHMIN ETMEZ. Sabit esiklerin mekanik ciktisi + bu hissedeki gecmis SICIL.
 UFUK_PLAN = 10  # plan vadesi (islem gunu)
@@ -349,26 +392,105 @@ def al_sinyali(k, gun, ka=None, p=None):
     return dict(onay=all(sart.values()), p=p, ka=ka, sart=sart)
 
 def guven_yorum(sc):
-    if sc["kapanan"] < 8: return ("OLGUNLASMADI", "neu", f"{sc['kapanan']} kapanan · veri az, guvenme")
-    if sc["isabet"] >= 60: return ("GECMISTE TUTMUS", "up", f"%{sc['isabet']} hedefe ulasti")
-    if sc["isabet"] <= 40: return ("GECMISTE TERS", "dn", f"%{sc['isabet']} · cogu stop'a degdi")
-    return ("YAZI-TURA", "neu", f"%{sc['isabet']} ≈ guvenme")
+    if sc["kapanan"] < 8: return ("VERI AZ", "neu", f"bu durum sadece {sc['kapanan']} kez yasanmis · yorum icin az")
+    if sc["isabet"] >= 60: return ("COGUNLUKLA TUTMUS", "up", f"%{sc['isabet']} hedefe ulasmis")
+    if sc["isabet"] <= 40: return ("PEK TUTMAMIS", "dn", f"%{sc['isabet']} · cogu zarar durdurmaya takilmis")
+    return ("YARI YARIYA", "neu", f"%{sc['isabet']} · garanti yok")
 
-# durum basina yonsuz izah (tavsiye degil, "klasik teoride buna ... denir")
+# durum basina SADE, yonsuz izah (herkesin anlayacagi dil)
 _DURUM_META = {
     "GIRIS_AKTIF": ("GIRIS BOLGESI AKTIF", "up",
-        "Fiyat, kurallarin tanimladigi giris bolgesinde ve risk filtresini gecti. Klasik teoride buraya 'giris/birikim bolgesi' denir — ama yon GARANTI degil, asagidaki sicile bak."),
+        "Fiyat, kurallarima gore alim icin uygun gordugum yerde ve risk kontrolumden gecti. Bu 'kesin yukselir' DEMEK DEGIL — asagida bu durumun gecmiste ne kadar tuttuguna bak."),
     "BEKLE": ("BEKLE", "neu",
-        "Fiyat ne giris ne kar-alma bolgesinde. Kurallar su an bir aksiyon tetiklemiyor — izleme seviyeleri asagida."),
-    "RISK_FILTRE": ("RISK FILTRESINDEN GECEMEDI", "dn",
-        "Fiyat giris bolgesinde olsa da risk filtresi engelledi (oynaklik / R-R / stop mesafesi). Kurallar bu kosulda islem SIMULE ETMEZDI."),
-    "KAR_ALMA": ("KAR-ALMA BOLGESI", "am",
-        "Fiyat direnc bolgesinde. Klasik teoride buraya 'kar-realizasyon / direnc testi' bolgesi denir — yon ima etmez, geometrik gozlem."),
-    "STOP": ("STOP / GECERSIZLIK BOLGESI", "dn",
-        "Fiyat destegin/gecersizlik seviyesinin altinda. Bu kosulda onceki plan GECERSIZ sayilir — yeni giris onerilmez."),
-    "ANORMAL": ("ANORMAL HACIM-VOLATILITE", "am",
-        "Gunluk hareket/oynaklik olagan bandin cok ustunde. Kurallar bu gurultude islem SIMULE ETMEZ — kenarda durur."),
+        "Fiyat su an ne alim ne satim bolgesinde. Kurallarim bir sey onermiyor, sabirla bekliyor. Izlenen seviyeler asagida."),
+    "RISK_FILTRE": ("RISK YUKSEK", "dn",
+        "Fiyat alim bolgesinde ama risk fazla (cok oynak, ya da kazanc-kayip dengesi kotu). Kurallarim bu riske girmezdi."),
+    "KAR_ALMA": ("YUKARIDA ENGEL VAR", "am",
+        "Fiyat, ustundeki bir dirence yakin. Klasik teoride 'kar alinabilecek bolge' denir — ama yon soylemez, sadece konum belirtir."),
+    "STOP": ("GUVENLI SINIRIN ALTINDA", "dn",
+        "Fiyat, guvenli kabul ettigim sinirin altina dusmus. Eski plan artik gecersiz — burada yeni alim mantikli degil."),
+    "ANORMAL": ("ASIRI HAREKETLI", "am",
+        "Fiyat bugun normalin cok ustunde oynak/hizli. Boyle 'asiri sicak' anlarda kurallarim islem yapmaz, kenarda durur."),
 }
+
+def apex_skor(k, gun, ka=None, p=None):
+    """APEX'in bu hisse icin OZET skoru (0-100). YON DEGIL — kurulumun ne kadar SAGLAM durdugu.
+    4 kontrol x 25 puan: (1) su anki durum, (2) gecmiste ne kadar tuttu, (3) kazanc-kayip dengesi,
+    (4) piyasadan bagimsiz ise yaradi mi. Cogu hissede 40-60 cikar — cunku gercek budur."""
+    if p is None: p = plan_uret(k, gun)
+    if ka is None: ka = kurulum_analiz(k)
+    dp = {"GIRIS_AKTIF": 25, "KAR_ALMA": 15, "BEKLE": 13, "RISK_FILTRE": 9, "STOP": 5, "ANORMAL": 4}.get(p["durum"], 10)
+    if ka["kapanan"] < 8: gp = 8.0
+    else: gp = max(2.0, min(25.0, (ka["isabet"] - 30) / 40 * 25))
+    rr = p["rr"]
+    # R/R: 1.5-3 ideal; asiri yuksek R/R = hedef cok uzak, gerceklesme suphesi -> ceza
+    if rr < 1: rp = 6
+    elif rr < 1.5: rp = 12
+    elif rr <= 3: rp = 25
+    elif rr <= 5: rp = 18
+    else: rp = 11
+    if ka["n"] < 10: ep = 8
+    elif ka["edge"] > 0.15: ep = 25
+    elif ka["edge"] > 0.05: ep = 16
+    elif ka["edge"] > -0.05: ep = 9
+    else: ep = 3
+    toplam = round(dp + gp + rp + ep)
+    # band: DURUMA bagli — sinyal varsa 'sinyal gucu', yoksa 'profil + bekle' (aksiyon ima etmez)
+    if p["durum"] == "GIRIS_AKTIF":
+        if toplam >= 72: band = ("GUCLU SINYAL", "up")
+        elif toplam >= 55: band = ("ORTA SINYAL", "am")
+        else: band = ("ZAYIF SINYAL", "neu")
+    elif p["durum"] in ("STOP", "RISK_FILTRE", "ANORMAL"):
+        band = ("SU AN UZAK DUR", "dn")
+    else:  # BEKLE, KAR_ALMA
+        if toplam >= 72: band = ("GUCLU PROFIL · su an bekle", "up")
+        elif toplam >= 55: band = ("ORTA PROFIL · su an bekle", "neu")
+        else: band = ("ZAYIF PROFIL", "dn")
+    return dict(skor=toplam, dp=round(dp), gp=round(gp), rp=rp, ep=ep, band=band, p=p, ka=ka)
+
+def apex_skor_html(k, gun):
+    sk = apex_skor(k, gun); p = sk["p"]; ka = sk["ka"]
+    bas, renk, izah = _DURUM_META[p["durum"]]
+    gecen = sum([sk["dp"] >= 18, sk["gp"] >= 15, sk["rp"] >= 15, sk["ep"] >= 15])
+    h = ['<div class="skor-kart">']
+    h.append(f'<div class="skor-ust"><div class="skor-buyuk {sk["band"][1]}">{sk["skor"]}<span class="skor-100">/100</span></div>'
+             f'<div class="skor-yan"><div class="skor-durum {renk}">{bas}</div>'
+             f'<div class="skor-band {sk["band"][1]}">{sk["band"][0]} · 4 kontrolden {gecen}\'u olumlu</div></div></div>')
+    h.append('<div class="skor-not"><b>Bu bir "yukselir" tahmini DEGIL.</b> APEX kurallarimin bu hissede su an ne kadar saglam durdugunu gosterir. Yuksek skor bile kesinlik degil — cogu hisse 40-60 arasidir, cunku dururst olan bu.</div>')
+    h.append('</div>')
+    return "".join(h)
+
+def sade_ozet_html(k, gun):
+    sk = apex_skor(k, gun); p = sk["p"]; ka = sk["ka"]
+    def bar(puan, etiket, aciklama):
+        yz = puan / 25 * 100
+        renk = "up" if puan >= 18 else ("am" if puan >= 12 else "dn")
+        return (f'<div class="sade-satir"><div class="sade-bas"><span class="sade-et">{etiket}</span><span class="sade-puan {renk}">{puan}/25</span></div>'
+                f'<div class="sade-bar"><div class="{renk}" style="width:{yz:.0f}%"></div></div>'
+                f'<div class="sade-ac">{aciklama}</div></div>')
+    durum_ac = {"GIRIS_AKTIF": "Fiyat su an alim icin uygun gordugum yerde.",
+                "BEKLE": "Fiyat bekleme bolgesinde — acele gerektiren bir sey yok.",
+                "RISK_FILTRE": "Alim bolgesinde ama risk yuksek, ben girmezdim.",
+                "KAR_ALMA": "Fiyat yukaridaki bir engele (dirence) yakin.",
+                "STOP": "Fiyat guvenli sinirin altinda.",
+                "ANORMAL": "Bugun hareket asiri sicak, kenarda dururum."}[p["durum"]]
+    if ka["kapanan"] < 8: g_ac = f"Bu durum bu hissede sadece {ka['kapanan']} kez yasanmis — saglikli yorum icin cok az."
+    else:
+        e = "Yariyi geciyor, hafif lehte." if ka["isabet"] > 55 else ("Tam yari yariya — yani garanti yok." if ka["isabet"] >= 45 else "Yaridan az tutmus — pek guvenilir degil.")
+        g_ac = f"Bu durum bu hissede {ka['kapanan']} kez yasandi, {ka['hedef']}'inde hedefe ulasti (~%{ka['isabet']}). {e}"
+    r_ac = f"Kazanirsan, kaybettiginin ~{p['rr']:.1f} kati kadar kazanirsin. " + ("Iyi denge." if p["rr"] >= 1.5 else ("Zayif denge." if p["rr"] < 1 else "Orta denge."))
+    if ka["n"] < 10: e_ac = "Bunu olcecek kadar gecmis ornek yok henuz."
+    elif ka["edge"] > 0.05: e_ac = "Bu kurulum sadece piyasa yukseldigi icin degil, KENDI BASINA da ise yaramis. Iyi isaret."
+    elif ka["edge"] > -0.05: e_ac = "Kazanci cogunlukla piyasanin genel yonunden geliyor — kurulumun kendi katkisi yok denecek kadar az."
+    else: e_ac = "Bu kurulum gecmiste rastgele girmekten bile kotu sonuc vermis. Dikkat."
+    h = ['<div class="sade-kutu">']
+    h.append(bar(sk["dp"], "1 · Su anki durum", durum_ac))
+    h.append(bar(sk["gp"], "2 · Gecmiste ne kadar tuttu", g_ac))
+    h.append(bar(sk["rp"], "3 · Kazanc / kayip dengesi", r_ac))
+    h.append(bar(sk["ep"], "4 · Piyasadan bagimsiz ise yaradi mi", e_ac))
+    h.append('<div class="sade-toplam">Bu dortu toplaninca yukaridaki <b>' + str(sk["skor"]) + '/100</b> cikiyor. Tek bir sayi yerine parcalarina bakmak, neye guvenip neye guvenmeyecegini gosterir.</div>')
+    h.append('</div>')
+    return "".join(h)
 
 def plan_html(k, gun):
     p = plan_uret(k, gun); ka = kurulum_analiz(k); gy = guven_yorum(ka)
@@ -965,6 +1087,45 @@ div[data-testid="stTextInput"] input::placeholder{color:#5A616B;}
 .tstar{color:#2DD4BF;font-size:11px;margin-left:5px;}
 .gecmis-not{font-family:'Hanken Grotesk';font-size:10px;color:#9aa0aa;line-height:1.5;background:rgba(232,184,75,.05);border:1px solid rgba(232,184,75,.16);border-radius:9px;padding:8px 11px;margin:0 0 10px;}
 .gecmis-not b{font-family:'IBM Plex Mono';color:#E8B84B;}
+.skor-kart{background:linear-gradient(135deg,#0C1117,#0A0E13);border:1px solid rgba(232,228,216,.1);border-radius:16px;padding:15px;margin:0 0 11px;}
+.skor-ust{display:flex;align-items:center;gap:14px;}
+.skor-buyuk{font-family:'IBM Plex Mono';font-weight:600;font-size:46px;line-height:1;}
+.skor-buyuk.up{color:#2DD4BF;}.skor-buyuk.am{color:#E8B84B;}.skor-buyuk.neu{color:#C9CDD3;}.skor-buyuk.dn{color:#EF5B4C;}
+.skor-100{font-size:16px;color:#5A616B;font-weight:400;}
+.skor-yan{flex:1;}
+.skor-durum{font-family:'Archivo';font-weight:800;font-size:15px;letter-spacing:.02em;}
+.skor-durum.up{color:#2DD4BF;}.skor-durum.am{color:#E8B84B;}.skor-durum.neu{color:#C9CDD3;}.skor-durum.dn{color:#EF5B4C;}
+.skor-band{font-family:'IBM Plex Mono';font-size:9.5px;margin-top:3px;}
+.skor-band.up{color:#2DD4BF;}.skor-band.am{color:#E8B84B;}.skor-band.neu{color:#7E848E;}.skor-band.dn{color:#EF5B4C;}
+.skor-not{font-family:'Hanken Grotesk';font-size:10.5px;color:#9aa0aa;line-height:1.55;margin-top:11px;border-top:1px solid rgba(232,228,216,.08);padding-top:10px;}
+.skor-not b{font-family:'IBM Plex Mono';color:#E8E4D8;}
+.sade-kutu{padding:2px 0;}
+.sade-satir{margin-bottom:13px;}
+.sade-bas{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;}
+.sade-et{font-family:'Archivo';font-weight:700;font-size:12px;color:#E8E4D8;}
+.sade-puan{font-family:'IBM Plex Mono';font-size:11px;font-weight:600;}
+.sade-puan.up{color:#2DD4BF;}.sade-puan.am{color:#E8B84B;}.sade-puan.dn{color:#EF5B4C;}
+.sade-bar{height:7px;border-radius:4px;background:rgba(232,228,216,.07);overflow:hidden;margin-bottom:6px;}
+.sade-bar>div{height:100%;border-radius:4px;}
+.sade-bar>div.up{background:rgba(45,212,191,.6);}.sade-bar>div.am{background:rgba(232,184,75,.6);}.sade-bar>div.dn{background:rgba(239,91,76,.55);}
+.sade-ac{font-family:'Hanken Grotesk';font-size:11.5px;color:#9aa0aa;line-height:1.5;}
+.sade-toplam{font-family:'Hanken Grotesk';font-size:11px;color:#7E848E;line-height:1.55;margin-top:6px;border-top:1px solid rgba(232,228,216,.08);padding-top:9px;}
+.sade-toplam b{font-family:'IBM Plex Mono';color:#E8E4D8;}
+.nabiz{background:linear-gradient(135deg,#0C1117,#0A0E13);border:1px solid rgba(232,228,216,.1);border-radius:14px;padding:13px;margin:0 0 11px;}
+.nabiz-bas{font-family:'Archivo';font-weight:800;font-size:11px;color:#C9CDD3;letter-spacing:.05em;margin-bottom:10px;}
+.nabiz-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;}
+.nab-h{text-align:center;}
+.nab-v{font-family:'IBM Plex Mono';font-weight:600;font-size:17px;color:#E8E4D8;}
+.nab-v.up{color:#2DD4BF;}.nab-v.dn{color:#EF5B4C;}.nab-v.neu{color:#C9CDD3;}
+.nab-k{font-family:'Hanken Grotesk';font-size:8.5px;color:#7E848E;margin-top:2px;}
+.nabiz-ist{font-family:'Hanken Grotesk';font-size:11px;color:#9aa0aa;padding:7px 0;border-top:1px solid rgba(232,228,216,.07);}
+.nabiz-ist b{font-family:'IBM Plex Mono';}
+.nabiz-ist.up b{color:#2DD4BF;}.nabiz-ist.dn b{color:#EF5B4C;}.nabiz-ist.neu b{color:#C9CDD3;}
+.nabiz-ayna{font-family:'Hanken Grotesk';font-size:11px;line-height:1.55;color:#c9cdd3;border-radius:9px;padding:9px 11px;margin-top:4px;}
+.nabiz-ayna b{font-family:'Archivo';font-weight:700;}
+.nabiz-ayna.dn{background:rgba(239,91,76,.07);border:1px solid rgba(239,91,76,.2);}
+.nabiz-ayna.am{background:rgba(232,184,75,.06);border:1px solid rgba(232,184,75,.18);}
+.nabiz-ayna.neu{background:rgba(232,228,216,.03);border:1px solid rgba(232,228,216,.1);}
 .alsin .als{font-family:'IBM Plex Mono';font-size:9px;color:#2DD4BF;opacity:.8;margin-left:auto;}
 .alacik{font-family:'Hanken Grotesk';font-size:10.5px;color:#9aa0aa;line-height:1.55;margin-bottom:11px;}
 .bded{margin-top:9px;border-top:1px solid rgba(232,228,216,.08);padding-top:9px;}
@@ -999,20 +1160,18 @@ def main():
     build(data)
     s = load_state()
 
-    H('<div class="top"><span class="h1">APEX</span><span class="badge">' + (f"BIST{D['NST']} · GERCEK VERI" if real else "SANAL · SENTETIK") + '</span></div>')
-    _renk, _yazi = (("#34d399", "☁️ Bulut kalici · her cihazda ayni cuzdan") if kl.BULUT_AKTIF
-                    else ("#fbbf24", "⚠️ Yerel mod · bulut bagli degil (REHBER_KALICILIK)"))
-    H(f'<div style="text-align:center;font-size:0.72rem;color:{_renk};margin:-2px 0 8px">{_yazi}</div>')
-    H("<a href='/' target='_self' style='display:block;text-align:center;font-size:0.78rem;"
-      "color:#9fb4ad;text-decoration:none;margin:0 0 8px'>\u2190 APEX ana sayfa</a>")
+    H('<div class="top"><span class="h1">APEX</span><span class="badge">' + (f"BIST{D['NST']} · GUNCEL VERI" if real else "SANAL · SENTETIK") + '</span></div>')
+    _renk = "#34d399" if kl.BULUT_AKTIF else "#fbbf24"
+    _yazi = "☁️ Bulut kayit acik" if kl.BULUT_AKTIF else "⚠️ Yerel mod"
+    H("<div style='display:flex;align-items:center;justify-content:center;gap:10px;margin:-2px 0 8px'>"
+      f"<span style='font-size:0.72rem;color:{_renk}'>{_yazi}</span>"
+      "<a href='/' target='_self' style='font-size:0.72rem;color:#9fb4ad;text-decoration:none'>\u2190 ana sayfa</a></div>")
     if real:
         guncel = s["day"] >= D["N"] - 2
         if guncel:
-            H(f'<div class="gecmis-not">✅ GUNCEL fiyat · son islem gunu <b>{dlf(s["day"])}</b>. Gercek BIST kapanisi. Kurallari gecmiste sinamak istersen <b>◀ Hafta</b> ile geriye in (forward-test).</div>')
+            H(f'<div class="gecmis-not">✅ <b>GUNCEL fiyat</b> · son islem gunu {dlf(s["day"])}. Gercek BIST kapanisi. Kurallari gecmiste denemek istersen <b>◀ Hafta</b> ile geriye in.</div>')
         else:
-            H(f'<div class="gecmis-not">⏳ GECMIS gun <b>{dlf(s["day"])}</b> · forward-test modu (fiyat o gunun kapanisi, canli DEGIL). Gunceleedonmek icin <b>⏭ Bugun</b>. Ileri oynamak icin <b>Hafta ▶</b>.</div>')
-    stg = ["Ogren", "Sanal Test", "Ilk Gercek Adim", "Tecrube", "Lisansli APEX"]
-    H('<div class="journey">' + "".join(f'<div class="jst {"on" if i==1 else ""}">{x}{"<br>•buradasin•" if i==1 else ""}</div>' for i, x in enumerate(stg)) + '</div>')
+            H(f'<div class="gecmis-not">⏳ <b>GECMIS gun</b> {dlf(s["day"])} · deneme modu (canli fiyat DEGIL). Bugune donmek icin <b>⏭ Bugun</b>, ileri gitmek icin <b>Hafta ▶</b>.</div>')
 
     c = st.columns([1.25, 1, 1, 1, 1.05])
     if c[0].button(f"{dlf(s['day'])}", key="dshow"): pass
@@ -1045,7 +1204,8 @@ def main():
     elif view == "cuzdan": v_cuzdan(s)
 
 def v_havuz(s):
-    H('<div class="warnb"><b>Havuz — BIST100, okuma-uygunlugu skoruna gore sirali.</b> AL listesi DEGIL: skor "okumalar gecmiste ne kadar tuttu" demek. Cogu hisse ~%50 (yazi-tura).</div>')
+    H(nabiz_html(s))
+    H('<div class="warnb"><b>Havuz — BIST100 hisseleri.</b> Yandaki yuzde: bu hissenin gecmis kaydi ne kadar guvenilir (cogu ~%50 = yazi-tura). Bu bir "AL listesi" DEGIL — sadece hangi hissenin gecmisi daha saglam, onu gosterir. Bir hisseye dokun, tek yuzdelik sade ozeti gor.</div>')
     # AL SINYALI TARAMASI (su an tum suzgecten gecen hisseler)
     al = al_tarama(s); al_set = set(k for k, _, _ in al)
     if al:
@@ -1078,22 +1238,25 @@ def v_havuz(s):
         with col:
             H(f'<div class="tile"><div class="spark">{sparkline(k, s["day"], color)}</div>'
               f'<div class="tk">{D["TK"][k]}{rozet}</div><div class="pxr">{ftl(price(s,k))} <span class="{cgc}">{"▲%" if cg>=0 else "▼%"}{abs(cg):.1f}</span></div>'
-              f'<div class="scw"><div class="scl">OKUMA-UYGUNLUGU</div><div class="ax"><span class="sc {sc}">~%{S["uyum"]:.0f}</span> <span class="chip {sc}">{S["band"][0]}</span></div></div></div>')
+              f'<div class="scw"><div class="scl">GECMIS KAYIT</div><div class="ax"><span class="sc {sc}">~%{S["uyum"]:.0f}</span> <span class="chip {sc}">{S["band"][0]}</span></div></div></div>')
             if st.button("Incele →", key=f"open{k}"):
                 s["sel"] = k; s["tab"] = "hisse"; save_state(s); st.rerun()
 
 def v_hisse(s):
-    k = s["sel"]; day = s["day"]; S = score_full(k)
-    if st.button("← Havuz", key="back"): s["tab"] = "havuz"; save_state(s); st.rerun()
+    k = s["sel"]; day = s["day"]
+    if st.button("← Havuza don", key="back"): s["tab"] = "havuz"; save_state(s); st.rerun()
     cg = today_pct(s, k); cgc = "up" if cg >= 0 else "dn"
     H(f'<div class="ax" style="display:flex;align-items:baseline;gap:8px"><span class="hh">{D["TK"][k]}</span><span style="font-weight:600;font-size:18px;margin-left:auto">{ftl(price(s,k))}</span><span class="{cgc}" style="font-size:12px;font-weight:600">{"▲%" if cg>=0 else "▼%"}{abs(cg):.1f}</span></div>')
-    H('<div class="lbl" style="margin-bottom:9px">komuta merkezi · grafik son ~4 ay · sicil son 1 yil</div>')
+    H(apex_skor_html(k, day))
     H(f'<div class="card" style="padding:8px 6px 4px">{chart_svg(k, day)}</div>')
-    H(plan_html(k, day))
-    H(durum_html(s, k))
-    H(uygunluk_html(k, day, S))
-    H(readings_html(k))
-    H('<div class="lbl" style="text-align:center">sinyal/hedef/al-sat yok · her okuma kendi sicilini tasir</div>')
+    H('<div class="lbl" style="text-align:center;margin:-4px 0 10px">grafik: son ~4 ay · beyaz cizgi fiyat · sari 20 gunluk ortalama · gri 50 gunluk</div>')
+    with st.expander("📊 Bu skor neden boyle? — Sade anlatim", expanded=True):
+        H(sade_ozet_html(k, day))
+    with st.expander("🎯 Islem plani (giris · zarar durdur · hedef)"):
+        H(plan_html(k, day))
+    with st.expander("🔬 Teknik detay (ileri seviye)"):
+        H(durum_html(s, k)); S = score_full(k); H(uygunluk_html(k, day, S)); H(readings_html(k))
+    H('<div class="lbl" style="text-align:center">APEX yon tahmini yapmaz · her rakam kendi gecmisini tasir · garanti yoktur</div>')
 
 def v_islem(s):
     H('<div class="card"><div class="sec">ISLEM · MANUEL AL-SAT (BIST100)</div>')
