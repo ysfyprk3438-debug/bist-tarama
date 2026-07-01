@@ -1,4 +1,4 @@
-# surum 11 — APEX Sanal Borsa: Havuz hisse arama motoru + text_input tema.
+# surum 14 — APEX denetim duzeltmeleri: destek-direnc kenar durum + AL sinyali gurultu-ustu esikler.
 import os
 import json
 import math
@@ -72,7 +72,8 @@ def fetch_real(kodlar):
     kodlar2 = [k for k in kodlar if k in mat.columns]
     PR = [[round(float(v), 4) for v in mat[k].tolist()] for k in kodlar2]
     DLAB = [f"{d.day} {AY[d.month - 1]}" for d in mat.index]
-    return {"TK": kodlar2, "PR": PR, "DLAB": DLAB}
+    DLABF = [f"{d.day} {AY[d.month - 1]} {str(d.year)[2:]}" for d in mat.index]
+    return {"TK": kodlar2, "PR": PR, "DLAB": DLAB, "DLABF": DLABF}
 
 def sma(a, w):
     out = []
@@ -99,7 +100,7 @@ def rsi_calc(p, per):
     return r
 
 def build(data):
-    D["TK"] = data["TK"]; D["PR"] = data["PR"]; D["DLAB"] = data["DLAB"]
+    D["TK"] = data["TK"]; D["PR"] = data["PR"]; D["DLAB"] = data["DLAB"]; D["DLABF"] = data.get("DLABF", data["DLAB"])
     D["N"] = len(data["PR"][0]); D["NST"] = len(data["TK"])
     D["MA"] = [sma(px, 20) for px in D["PR"]]
     D["MA50"] = [sma(px, 50) for px in D["PR"]]
@@ -109,7 +110,7 @@ def build(data):
         s = sum(D["PR"][k][d] / D["PR"][k][0] for k in range(D["NST"]))
         idx.append(s / D["NST"])
     D["idxLvl"] = idx
-    D["D0"] = max(130, D["N"] - 90)
+    D["D0"] = max(130, D["N"] - 1)  # GUNCEL gunden basla (bugunun fiyati)
 
 def vol_at(PX, t):
     rr = [PX[i] / PX[i - 1] - 1 for i in range(max(1, t - 60), t)]
@@ -245,13 +246,16 @@ def _pivotlar(k, gun, look=70, w=4):
     return sup, res
 
 def sd_seviye(k, gun):
-    """Mevcut fiyatin altinda en yakin destek, ustunde en yakin direnc + ATR."""
+    """Mevcut fiyatin altinda en yakin destek, ustunde en yakin direnc + ATR.
+    GARANTI: destek < fiyat < direnc (yeni zirve/dip kenar durumunda ATR fallback)."""
     PX = D["PR"][k]; f = PX[gun]; atr = atr_at(k, gun)
     sup, res = _pivotlar(k, gun)
-    alt = [v for v in sup if v <= f * 1.005]
-    ust = [v for v in res if v >= f * 0.995]
-    destek = max(alt) if alt else (min(sup) if sup else f - 2 * atr)
-    direnc = min(ust) if ust else (max(res) if res else f + 3 * atr)
+    alt = [v for v in sup if v <= f]   # fiyatin ALTINDAKI pivotlar
+    ust = [v for v in res if v >= f]   # fiyatin USTUNDEKI pivotlar
+    destek = max(alt) if alt else f - 2 * atr
+    direnc = min(ust) if ust else f + 2 * atr
+    if destek >= f: destek = f - 2 * atr  # guvenlik: destek daima fiyatin altinda
+    if direnc <= f: direnc = f + 2 * atr  # guvenlik: direnc daima fiyatin ustunde
     return destek, direnc, atr
 
 def _giris_bolgesinde(f, destek, atr):
@@ -335,13 +339,13 @@ def kurulum_analiz(k, ufuk=UFUK_PLAN):
                 kazanan=len(kaz), kaybeden=len(kyb))
 
 def al_sinyali(k, gun, ka=None, p=None):
-    """Coklu suzgec kesisimi. Sadece: giris aktif + olgun + sicil>=55 + R/R>=1.8 + edge>0.05.
-    Cogu hissede CIKMAZ. Ciktiginda bile garanti degil — sicilini tasir."""
+    """Coklu suzgec kesisimi. Sadece: giris aktif + olgun(>=15) + sicil>=55 + R/R>=1.5 + edge>0.12.
+    Esikler GURULTU seviyesinin USTUNDE — cogu hissede CIKMAZ. Ciktiginda bile garanti degil."""
     if p is None: p = plan_uret(k, gun)
     if p["durum"] != "GIRIS_AKTIF": return dict(onay=False, p=p, ka=ka, sart={})
     if ka is None: ka = kurulum_analiz(k)
-    sart = dict(olgun=ka["kapanan"] >= 10, sicil=ka["isabet"] >= 52,
-                rr=p["rr"] >= 1.5, edge=(ka["n"] >= 10 and ka["edge"] > 0.03))
+    sart = dict(olgun=ka["kapanan"] >= 15, sicil=ka["isabet"] >= 55,
+                rr=p["rr"] >= 1.5, edge=(ka["n"] >= 15 and ka["edge"] > 0.12))
     return dict(onay=all(sart.values()), p=p, ka=ka, sart=sart)
 
 def guven_yorum(sc):
@@ -417,7 +421,7 @@ def plan_html(k, gun):
         eyaz = "MATEMATIK LEHTE" if ka["edge"] > 0.05 else ("ALEYHTE · kacin" if ka["edge"] < -0.05 else "NOTR ≈ basabas")
         h.append(f'<div class="bded"><div class="bdh"><span class="bdl">BEKLENEN DEGER</span><span class="vlab {ec}">{eyaz}</span></div>')
         h.append(f'<div class="psd"><span class="neu">ham {ka["exp"]:+.2f}R</span><span class="neu">piyasa payi {ka["placebo"]:+.2f}R</span><span class="{ec}">kurulum katkisi (edge) {ka["edge"]:+.2f}R</span></div>')
-        h.append(f'<div class="pswhy">{ka["n"]} islem · kazaninca +{ka["ort_kazanc"]:.2f}R, kaybedince {ka["ort_kayip"]:.2f}R. "Edge" = kurulumun piyasa yonunun USTUNE kattigi. ~0 ise kazanc sadece piyasadan gelir, kurulumun katkisi yok.</div></div>')
+        h.append(f'<div class="pswhy">{ka["n"]} islem · kazaninca +{ka["ort_kazanc"]:.2f}R, kaybedince {ka["ort_kayip"]:.2f}R. "Edge" = kurulumun piyasa yonunun USTUNE kattigi. ~0 ise kazanc sadece piyasadan gelir.{" <b>Az islem — edge cok oynak, GUVENME.</b>" if ka["n"] < 20 else ""}</div></div>')
     else:
         h.append(f'<div class="pswhy">{gy[2]}</div>')
     h.append('</div>')
@@ -668,6 +672,7 @@ def ftl(n): return "₺" + f"{round(n):,}".replace(",", ".")
 def fsig(n):
     return ("" if n >= 0 else "−") + "₺" + f"{round(abs(n)):,}".replace(",", ".")
 def dl(i): return D["DLAB"][min(max(i, 0), D["N"] - 1)]
+def dlf(i): return D.get("DLABF", D["DLAB"])[min(max(i, 0), D["N"] - 1)]
 
 def sparkline(k, day, color):
     PX = D["PR"][k][max(0, day - 80):day + 1]
@@ -958,6 +963,8 @@ div[data-testid="stTextInput"] input::placeholder{color:#5A616B;}
 .alte{font-family:'Archivo';font-weight:700;font-size:9px;padding:2px 7px;border-radius:5px;background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.3);}
 .altarn{font-family:'Hanken Grotesk';font-size:10px;color:#7E848E;line-height:1.5;margin-top:8px;}
 .tstar{color:#2DD4BF;font-size:11px;margin-left:5px;}
+.gecmis-not{font-family:'Hanken Grotesk';font-size:10px;color:#9aa0aa;line-height:1.5;background:rgba(232,184,75,.05);border:1px solid rgba(232,184,75,.16);border-radius:9px;padding:8px 11px;margin:0 0 10px;}
+.gecmis-not b{font-family:'IBM Plex Mono';color:#E8B84B;}
 .alsin .als{font-family:'IBM Plex Mono';font-size:9px;color:#2DD4BF;opacity:.8;margin-left:auto;}
 .alacik{font-family:'Hanken Grotesk';font-size:10.5px;color:#9aa0aa;line-height:1.55;margin-bottom:11px;}
 .bded{margin-top:9px;border-top:1px solid rgba(232,228,216,.08);padding-top:9px;}
@@ -987,7 +994,8 @@ def main():
         n = 250
         data = {"TK": TK_DEF,
                 "PR": [_synthetic(n, 30 + i * 25, 0.12 + i * 0.01, i * 3, (i % 3) - 1) for i in range(len(TK_DEF))],
-                "DLAB": [f"{(i % 28) + 1} {AY[(i // 21) % 12]}" for i in range(n)]}
+                "DLAB": [f"{(i % 28) + 1} {AY[(i // 21) % 12]}" for i in range(n)],
+                "DLABF": [f"{(i % 28) + 1} {AY[(i // 21) % 12]} ss" for i in range(n)]}
     build(data)
     s = load_state()
 
@@ -997,14 +1005,23 @@ def main():
     H(f'<div style="text-align:center;font-size:0.72rem;color:{_renk};margin:-2px 0 8px">{_yazi}</div>')
     H("<a href='/' target='_self' style='display:block;text-align:center;font-size:0.78rem;"
       "color:#9fb4ad;text-decoration:none;margin:0 0 8px'>\u2190 APEX ana sayfa</a>")
+    if real:
+        guncel = s["day"] >= D["N"] - 2
+        if guncel:
+            H(f'<div class="gecmis-not">✅ GUNCEL fiyat · son islem gunu <b>{dlf(s["day"])}</b>. Gercek BIST kapanisi. Kurallari gecmiste sinamak istersen <b>◀ Hafta</b> ile geriye in (forward-test).</div>')
+        else:
+            H(f'<div class="gecmis-not">⏳ GECMIS gun <b>{dlf(s["day"])}</b> · forward-test modu (fiyat o gunun kapanisi, canli DEGIL). Gunceleedonmek icin <b>⏭ Bugun</b>. Ileri oynamak icin <b>Hafta ▶</b>.</div>')
     stg = ["Ogren", "Sanal Test", "Ilk Gercek Adim", "Tecrube", "Lisansli APEX"]
     H('<div class="journey">' + "".join(f'<div class="jst {"on" if i==1 else ""}">{x}{"<br>•buradasin•" if i==1 else ""}</div>' for i, x in enumerate(stg)) + '</div>')
 
-    c = st.columns([1.1, 1, 1, 1.2])
-    if c[0].button(f"Gun: {dl(s['day'])}", key="dshow"): pass
-    if c[1].button("Gun +1", key="adv1"): advance(s, 1); save_state(s); st.rerun()
-    if c[2].button("Hafta +1", key="adv5"): advance(s, 5); save_state(s); st.rerun()
-    if c[3].button(("Oto: ACIK" if s["auto"] else "Oto: kapali"), key="auto", type=("primary" if s["auto"] else "secondary")):
+    c = st.columns([1.25, 1, 1, 1, 1.05])
+    if c[0].button(f"{dlf(s['day'])}", key="dshow"): pass
+    if c[1].button("◀ Hafta", key="geri"):
+        s["day"] = max(130, s["day"] - 5); s["msg"] = "Gecmise gidildi (forward-test)"; save_state(s); st.rerun()
+    if c[2].button("Hafta ▶", key="adv5"): advance(s, 5); save_state(s); st.rerun()
+    if c[3].button("⏭ Bugun", key="bugun"):
+        s["day"] = D["N"] - 1; s["msg"] = "Guncel gune donuldu"; save_state(s); st.rerun()
+    if c[4].button(("Oto ✓" if s["auto"] else "Oto"), key="auto", type=("primary" if s["auto"] else "secondary")):
         s["auto"] = not s["auto"]; s["msg"] = "Otomatik " + ("ACIK — sen yokken APEX devam eder" if s["auto"] else "kapali")
         if s["auto"] and s["started"]: oto_giris_kontrol(s); apex_reb(s)
         save_state(s); st.rerun()
@@ -1140,7 +1157,7 @@ def v_muhasebe(s):
                  ("Manuel toplam", ftl(pv(s, s["posM"]) + s["mevduat"]))]))
     elif s["acctTab"] == "oto":
         H('<div class="sec" style="border:0;margin:4px 2px">OTOMATIK DEFTER · APEX</div>')
-        H('<div class="warnb" style="margin-bottom:10px"><b>Oto nasil calisir (kural + suzgec):</b> Yon TAHMIN ETMEZ. Sadece <b>AL SINYALI</b> veren hisselere girer = giris bolgesi aktif + sicil ≥%52 + R/R ≥1.5 + <b>edge>0</b> (kurulum placeboyu geciyor, yani kazanc piyasa yonunden fazlasi). Cogu gun hic sinyal cikmaz — secici. Pozisyonu oynakliga gore boyutlar (vol-target), yari sermaye nakitte kalir, giris aninda stop/hedef sabitlenir, her gun stop/hedef kontrol eder, ~21 gunde bir tarar. Her islem deftere yazilir. <b>Kar amaci var ama kar GARANTISI yok</b> — sadece istatistigin lehe egildigi anlarda, riski kontrollu, simule eder.</div>')
+        H('<div class="warnb" style="margin-bottom:10px"><b>Oto nasil calisir (kural + suzgec):</b> Yon TAHMIN ETMEZ. Sadece <b>AL SINYALI</b> veren hisselere girer = giris bolgesi aktif + sicil ≥%55 + R/R ≥1.5 + <b>edge>0.12R</b> (kurulum placeboyu GURULTU USTUNDE geciyor). Esikler sikidir — cogu gun hic sinyal cikmaz, bu normal. Pozisyonu oynakliga gore boyutlar (vol-target), yari sermaye nakitte kalir, giris aninda stop/hedef sabitlenir, her gun stop/hedef kontrol eder, ~21 gunde bir tarar. Her islem deftere yazilir. <b>Not:</b> Oto forward-test icin GECMISTE calisir; guncel gunde sadece tek atis yapar — test icin <b>◀ Hafta</b> ile geriye in. <b>Kar amaci var ama GARANTISI yok.</b></div>')
         # FORWARD-TEST: oto gercek sonuclari (ledger'dan)
         oh = sum(1 for e in s["ledger"] if e["type"] == "Oto HEDEF cikis")
         os_ = sum(1 for e in s["ledger"] if e["type"] == "Oto STOP cikis")
