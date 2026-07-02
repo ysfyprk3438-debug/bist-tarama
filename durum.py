@@ -37,6 +37,9 @@ SON_GUNCELLEME = "İleri-test 3-çizgi SVG grafiği canlı (drawIleriChart, renk
 # GEÇMİŞ OTURUMLAR (en yeni üstte) — kısa, ne yapıldı
 # ══════════════════════════════════════════════════════════════
 GECMIS_OTURUMLAR = [
+    "2026-07-02/03 · Kimlik temizliği: REHBER.md + DEPLOY.md canlı APEX mimarisine göre "
+    "yeniden yazıldı; Para Avcısı/AV SKORU/Av Panosu/Avcı dili tamamen çıkarıldı (grep temiz), "
+    "Güven Kerterizi/Pusula terimlerine hizalandı, yönsüz sicil dili korundu.",
     "2026-07-02 · OTURUM KAPANIŞI — tarama_core arsiv'e + dürüst kimlik mühürlemesi; "
     "KOD_SEKTOR bağımsız sektor_map.py'ye koparıldı; AKD çekici (akd_cekici.py) kuruldu ve "
     "canlı doğrulandı (GARAN 200/54 kurum); --tokentest token ölçüm günlüğü (token_gunluk.csv, "
