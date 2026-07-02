@@ -1,0 +1,35 @@
+name: bekci gece saglik kontrolu
+
+on:
+  schedule:
+    - cron: "45 15 * * 1-5"   # 15:45 UTC = 18:45 TR (Pzt-Cum). gunluk(18:30) + projektor(18:35) sonrasi.
+  workflow_dispatch: {}         # Actions sekmesinden elle "Run workflow"
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  bekci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: repoyu al
+        uses: actions/checkout@v4
+
+      - name: python kur
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: bagimliliklar
+        run: pip install --quiet pandas requests
+
+      - name: saglik kontrolu
+        env:
+          # Issue icin: BEKCI_PAT varsa bekci.py onu tercih eder, yoksa GITHUB_TOKEN.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BEKCI_PAT: ${{ secrets.BEKCI_PAT }}
+          # Telegram (projektor.yml / gunluk.yml ile ayni secret adlari)
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python bekci.py
