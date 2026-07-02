@@ -1,10 +1,4 @@
-name: Claude
-
-# APEX — Claude Code GitHub Actions
-# İki tetikleyici:
-#  1) Bir issue veya PR yorumunda "@claude ..." yazınca → Claude görevi yapar, PR açar.
-#  2) Yeni/güncellenen bir PR açılınca → Claude diff'i otomatik inceler, yorum bırakır.
-# Her durumda PR-tabanlı: hiçbir şey onay olmadan main'e gitmez.
+name: Claude Code
 
 on:
   issue_comment:
@@ -13,55 +7,44 @@ on:
     types: [created]
   issues:
     types: [opened, assigned]
-  pull_request:
-    types: [opened, synchronize]
+  pull_request_review:
+    types: [submitted]
 
 jobs:
-  # ── 1) @claude ile tetiklenen görevler ──────────────────────────────
-  claude-gorev:
-    # Sadece yorumda/issue'da "@claude" geçiyorsa çalışır
+  claude:
     if: |
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'issues' && contains(github.event.issue.body, '@claude'))
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: anthropics/claude-code-action@v1
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          claude_args: "--model claude-sonnet-4-6 --max-turns 12"
-
-  # ── 2) Her PR'da otomatik inceleme ──────────────────────────────────
-  claude-inceleme:
-    if: github.event_name == 'pull_request'
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write
+      pull-requests: read
+      issues: read
       id-token: write
+      actions: read # Required for Claude to read CI results on PRs
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-      - uses: anthropics/claude-code-action@v1
+          fetch-depth: 1
+
+      - name: Run Claude Code
+        id: claude
+        uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          claude_args: "--model claude-sonnet-4-6 --max-turns 8"
-          prompt: |
-            Bu pull request'in diff'ini incele. CLAUDE.md kurallarına uy.
-            Özellikle şunlara dikkat et ve satır satır yorum bırak:
-            1. Mantık hataları ve kenar durumlar (örn. boş veri, NaN, sıfıra bölme).
-            2. Veri sızıntısı (leakage): karar t kapanışında mı, getiri t+1 mi?
-            3. Sessiz bozulma riski (örn. eksik etiketleri sıfırla doldurma gibi).
-            4. Para/risk mantığına dokunan değişiklikler — pozisyon, stop, eşik,
-               backtest çıtası değişiyorsa AÇIKÇA işaretle ve onay iste.
-            5. Uydurma sayı/sonuç var mı — gerçek çalıştırma çıktısı olmadan rakam yazılmış mı?
-            Stil takıntısı yapma; sadece somut, ciddi bulguları bildir. Türkçe yaz.
+
+          # This is an optional setting that allows Claude to read CI results on PRs
+          additional_permissions: |
+            actions: read
+
+          # Optional: Give a custom prompt to Claude. If this is not specified, Claude will perform the instructions specified in the comment that tagged it.
+          # prompt: 'Update the pull request description to include a summary of changes.'
+
+          # Optional: Add claude_args to customize behavior and configuration
+          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
+          # or https://code.claude.com/docs/en/cli-reference for available options
+          # claude_args: '--allowed-tools Bash(gh pr *)'
+
