@@ -16,6 +16,7 @@ Sadece standart kütüphane + veri.py (repodaki mevcut veri katmanı).
 """
 
 import csv
+import os
 import sys
 from datetime import date
 
@@ -28,7 +29,9 @@ except Exception:
 from veri import veri_al
 
 # ── SABİTLER ────────────────────────────────────────────────────────
-ARSIV = "akd_manuel_arsiv.csv"
+ARSIV = "akd_manuel_arsiv.csv"              # elle doğrulanmış (insan)
+OTO_ARSIV = "akd_oto_arsiv.csv"             # otomatik çekici çıktısı (akd_oto_topla.py)
+ARSIVLER = [ARSIV, OTO_ARSIV]               # sicil ikisini de okur (varsa)
 UFUK = 10                                   # kurulum vadesi (işlem günü) — skor_motoru ile aynı
 CUSTODIAN_ADLARI = {"BofA", "Citi", "Deutsche"}   # saklamacı (custodian) aracı kurumlar
 KUCUK_ORNEKLEM = 5                           # bunun altında "yetersiz örneklem" uyarısı
@@ -68,11 +71,28 @@ def _oku(yol=ARSIV):
     return satirlar
 
 
-def _hisse_bazinda(satirlar):
-    """{hisse: [satır, ...]} — her liste tarih_bitis'e göre artan."""
+def _kaynaklari_oku(yollar=ARSIVLER):
+    """Bir veya birden çok arşivi okuyup birleştirir. str de kabul eder. Yok olan atlanır."""
+    if isinstance(yollar, str):
+        yollar = [yollar]
+    birlesik = []
+    for y in yollar:
+        birlesik.extend(_oku(y))
+    return birlesik
+
+
+def _grupla(satirlar):
+    """
+    {(hisse, donem_tipi): [satır, ...]} — cadence-aware gruplama.
+    Günlük oto ile aylık manuel AYNI gruba düşmez; her grup kendi tarih_bitis'ine göre artan.
+    (donem_tipi boşsa 'bilinmiyor' etiketiyle yine ayrı tutulur.)
+    """
     d = {}
     for r in satirlar:
-        d.setdefault(r.get("hisse", ""), []).append(r)
+        anahtar = (r.get("hisse", ""), (r.get("donem_tipi") or "bilinmiyor").strip())
+        d.setdefault(anahtar, []).append(r)
+    for rows in d.values():
+        rows.sort(key=lambda r: r.get("tarih_bitis", ""))
     return d
 
 
@@ -82,45 +102,46 @@ def _hisse_bazinda(satirlar):
 # capa_tarih = tetikleyen kaydın tarih_bitis'i (sinyalin bilindiği an).
 # ══════════════════════════════════════════════════════════════════
 def desen_uc_ay_net_alici(kayitlar):
-    """A · 'ilk5 3 ay üst üste net alıcı': ardışık 3 kayıt da ilk5_net_lot > 0."""
+    """A · 'ilk5 3 dönem üst üste net alıcı': ardışık 3 kayıt da ilk5_net_lot > 0
+    (aynı kadans içinde — aylık manuel için 3 ay, günlük oto için 3 gün)."""
     out = []
-    for hisse, rows in kayitlar.items():
+    for (hisse, donem), rows in kayitlar.items():
         for i in range(2, len(rows)):
             uclu = rows[i - 2:i + 1]
             if all((r["_ilk5"] is not None and r["_ilk5"] > 0) for r in uclu):
-                out.append({"desen": "ilk5 3 ay üst üste net alıcı",
-                            "hisse": hisse, "capa_tarih": rows[i]["tarih_bitis"]})
+                out.append({"desen": "ilk5 3 dönem üst üste net alıcı", "hisse": hisse,
+                            "donem": donem, "capa_tarih": rows[i]["tarih_bitis"]})
     return out
 
 
 def desen_custodian_baskin(kayitlar):
     """B · 'custodian tek başına %40+ alıcı': lider_alici bir saklamacı ve payı ≥ %40."""
     out = []
-    for hisse, rows in kayitlar.items():
+    for (hisse, donem), rows in kayitlar.items():
         for r in rows:
             lider = (r.get("lider_alici") or "").strip()
             pct = r["_alici_pct"]
             if lider in CUSTODIAN_ADLARI and pct is not None and pct >= 40:
-                out.append({"desen": "custodian tek başına %40+ alıcı",
-                            "hisse": hisse, "capa_tarih": r["tarih_bitis"]})
+                out.append({"desen": "custodian tek başına %40+ alıcı", "hisse": hisse,
+                            "donem": donem, "capa_tarih": r["tarih_bitis"]})
     return out
 
 
 def desen_yon_degisti(kayitlar):
     """C · 'ilk5 net yön değiştirdi (kırmızı→yeşil)': önceki < 0, sonraki > 0."""
     out = []
-    for hisse, rows in kayitlar.items():
+    for (hisse, donem), rows in kayitlar.items():
         for i in range(1, len(rows)):
             onceki, simdi = rows[i - 1]["_ilk5"], rows[i]["_ilk5"]
             if onceki is not None and simdi is not None and onceki < 0 and simdi > 0:
-                out.append({"desen": "ilk5 net yön değiştirdi (kırmızı→yeşil)",
-                            "hisse": hisse, "capa_tarih": rows[i]["tarih_bitis"]})
+                out.append({"desen": "ilk5 net yön değiştirdi (kırmızı→yeşil)", "hisse": hisse,
+                            "donem": donem, "capa_tarih": rows[i]["tarih_bitis"]})
     return out
 
 
 # (görünen ad, tespit fonksiyonu) — ad her zaman buradan gelir (boş desende de temiz).
 DESENLER = [
-    ("ilk5 3 ay üst üste net alıcı", desen_uc_ay_net_alici),
+    ("ilk5 3 dönem üst üste net alıcı", desen_uc_ay_net_alici),
     ("custodian tek başına %40+ alıcı", desen_custodian_baskin),
     ("ilk5 net yön değiştirdi (kırmızı→yeşil)", desen_yon_degisti),
 ]
@@ -223,9 +244,9 @@ def sicil_ozeti(sonuclu_instances):
             "etiket": etiket}
 
 
-def tara(yol=ARSIV):
-    """Tüm desenleri tarar. Döner: [(desen_adi, [sonuclu_instance...], ozet), ...]."""
-    kayitlar = _hisse_bazinda(_oku(yol))
+def tara(yollar=ARSIVLER):
+    """Tüm desenleri tarar (manuel + oto arşiv). Döner: [(desen_adi, [sonuclu_instance...], ozet), ...]."""
+    kayitlar = _grupla(_kaynaklari_oku(yollar))
     sonuc = []
     for ad, fn in DESENLER:
         instances = [instance_sonucla(i) for i in fn(kayitlar)]
@@ -240,21 +261,25 @@ def _getiri_str(g):
     return "—" if g is None else f"%{g * 100:+.1f}"
 
 
-def rapor(yol=ARSIV):
+def rapor(yollar=ARSIVLER):
+    if isinstance(yollar, str):
+        yollar = [yollar]
+    mevcut = [y for y in yollar if os.path.exists(y)]
     s = []
     s.append("═" * 62)
     s.append("AKD SİCİL — gözlem, yön tahmini DEĞİL")
-    s.append(f"Arşiv: {yol}  ·  ufuk: {UFUK} işlem günü  ·  tarih: {date.today().isoformat()}")
+    s.append(f"Kaynak: {', '.join(mevcut) or '(dosya yok)'}  ·  ufuk: {UFUK} işlem günü  ·  "
+             f"tarih: {date.today().isoformat()}")
     s.append("Bir desenden SONRA fiyatın ne yaptığının sicili. AL/SAT/hedef YOK.")
     s.append("═" * 62)
 
-    for ad, instances, ozet in tara(yol):
+    for ad, instances, ozet in tara(yollar):
         s.append("")
         s.append(f"▸ Desen: {ad}")
         if not instances:
             s.append("   (arşivde bu desen hiç tetiklenmedi)")
         for x in instances:
-            s.append(f"   {x['hisse']} · çapa {x['capa_tarih']} · "
+            s.append(f"   {x['hisse']} [{x.get('donem', '—')}] · çapa {x['capa_tarih']} · "
                      f"{x['sonuc']} {_getiri_str(x['getiri'])}")
         s.append(f"   SİCİL → n={ozet['n']} · ▲{ozet['yukari']} / ▼{ozet['asagi']} · "
                  f"isabet={'—' if ozet['isabet'] is None else f'%{ozet['isabet']*100:.0f}'} · "
