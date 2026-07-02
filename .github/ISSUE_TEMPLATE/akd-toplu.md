@@ -13,7 +13,7 @@ ForInvest AKD/takas ekran görüntülerini `akd_gorsel_kutusu/` klasörüne yük
 
 ### Onay
 - [ ] Görselleri `akd_gorsel_kutusu/` klasörüne yükledim (alt klasör açmadan, doğrudan içine).
-- [ ] Bu partide ~50 görsel var (daha fazlaysa birden fazla issue açacağım).
+- [ ] Bu partide ~40 görsel var (daha fazlaysa birden fazla issue açacağım).
 
 ### Not (opsiyonel)
 <!-- Özel durum, belli hisseler, bilinen bulanık görseller vb. -->
@@ -27,4 +27,4 @@ CLAUDE.md Bölüm 12 (AKD Toplu Görsel Protokolü) adımlarını izle: takas ek
 `kontrol_gerekli.csv`'ye at, işlenenleri `islenmis/`'e taşı, özet çıkar ve PR aç
 (main'e doğrudan yazma).
 
-> Hatırlatma: Bir seferde ~50 görsel önerilir (bağlam sınırı). 500 görsel ≈ 10 parti/issue.
+> Hatırlatma: Bir seferde ~40 görsel işlenir (bağlam sınırı). 500 görsel ≈ 13 parti/issue.

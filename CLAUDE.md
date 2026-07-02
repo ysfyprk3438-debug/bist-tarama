@@ -134,6 +134,8 @@ dogrulamasi yine insanda; main'e DOGRUDAN yazilmaz.** Okunamayan/supheli veri UY
 
 **@claude adimlari:**
 1. `akd_gorsel_kutusu/` icindeki gorselleri oku — **`islenmis/` alt klasorunu HARIC tut** (onlar bitti).
+   **PARTI SINIRI: bir seferde EN FAZLA ~40 gorsel isle.** Kutuda daha fazlasi varsa ilk ~40'i isle,
+   ozet'e ve PR basligina "kalan X gorsel bir sonraki issue'da" yaz (kullanici yeni `[AKD-TOPLU]` acar).
 2. HER gorsel icin tespit et:
    - **hisse kodu** (ekranin ust kismindaki sembol, orn AKFGY/THYAO),
    - **ekran tipi** (icerikten anla: takas-gunluk/haftalik/aylik/3aylik · fiyat grafigi · temel veri),
@@ -149,13 +151,18 @@ dogrulamasi yine insanda; main'e DOGRUDAN yazilmaz.** Okunamayan/supheli veri UY
    (`tahmin` = en iyi okuma denemen, insan bakabilsin diye; kesin degil).
 6. Islenen HER gorseli (basarili csv VEYA kontrol_gerekli — ikisi de "islendi") `akd_gorsel_kutusu/islenmis/`
    altina TASI ki bir daha islenmesin. Ilgisiz (fiyat/temel) gorselleri de islenmis'e tasi.
-7. Idempotent ol: ayni (`hisse`, `tarih_bitis`) zaten `akd_manuel_arsiv.csv`'de varsa tekrar EKLEME.
-8. **OZET cikar** (PR aciklamasina): kac gorsel islendi · kac hisse/kayit eklendi · kac ilgisiz atlandi ·
-   kac kayit `kontrol_gerekli.csv`'ye dustu (ve neden). Her eklenen satir icin "gorselden su okundu" notu.
+7. **MUKERRER KORUMASI:** ayni (`hisse`, `tarih_bitis`) zaten `akd_manuel_arsiv.csv`'de varsa **ikinci kez EKLEME**.
+   Yeni gorsel, mevcut satirdaki BOS bir alani dolduruyorsa o satiri GUNCELLE (bos->deger; dolu degeri EZME);
+   yeni bilgi yoksa ATLA. Ozet'te "mukerrer: N guncellendi / M atlandi" olarak belirt.
+8. **OZET cikar** (PR aciklamasina): kac gorsel islendi · kac hisse/kayit eklendi · kac mukerrer (guncellendi/atlandi) ·
+   kac ilgisiz atlandi · kac kayit `kontrol_gerekli.csv`'ye dustu (ve neden) · varsa "kalan X gorsel sonraki issue'da".
+   Her eklenen satir icin "gorselden su okundu" notu.
 9. **PR AC — main'e DOGRUDAN YAZMA.** Insan diff'te rakamlari + kontrol_gerekli listesini gozden gecirir, merge eder.
+   **`kontrol_gerekli.csv` bu partide DOLDUYSA, PR aciklamasinin EN USTUNE** kalin uyari yaz:
+   `⚠️ N kayit elle kontrol gerektiriyor (kontrol_gerekli.csv)` — merge oncesi insan dikkati cekilsin.
 
 **Sinir:** Toplu hat da SADECE veri girisi. `akd_sicil.py` / desenlere dokunma. Yon tahmini / AL-SAT YOK.
-Baglam siniri: bir partide ~50 gorsel; daha fazlasi birden fazla issue/PR olarak islenir (ozet'te belirt).
+Parti basi ~40 gorsel (Adim 1); fazlasi birden fazla issue/PR olarak islenir (ozet'te belirt).
 
 ---
 > Ozet: Insan kodu PR'dan gecer, insan merge eder (kapi). Bot veri commit'leri main'e dogrudan.
