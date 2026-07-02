@@ -60,6 +60,9 @@ TAMAMLANAN = [
     ("AKD yarı-otomatik görsel besleme protokolü — CLAUDE.md §11 + [AKD] issue şablonu "
      "(görsel→@claude→PR→insan doğrular; main'e yazma)", "✅"),
     ("FIZIBILITE_AKD.md — AKD/takas programatik erişim araştırması (seçenekler+risk+tavsiye; karar bekliyor)", "✅"),
+    ("Mühürleme — tarama_core.py arsiv'e taşındı (ölü çekirdek; canlı sistemde kullanılmıyor). "
+     "Kimlik yeniden mühürlendi: APEX tahmin motoru DEĞİL, doğrulanmış eksen risk disiplini "
+     "(vol-hedef Poz + ATR(14)×2 stop + dürüst sicil). Eski av/skor/al-sat dili çıkarıldı", "✅"),
 ]
 
 # ══════════════════════════════════════════════════════════════

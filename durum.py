@@ -23,10 +23,15 @@ Yeni sohbette Claude önce bunu + yol_haritasi.py'yi okur.
 # ══════════════════════════════════════════════════════════════
 # ŞU AN NEREDEYİZ
 # ══════════════════════════════════════════════════════════════
-SURUM = "v16"
+SURUM = "v17"
 AKTIF_DOSYA = "akd_sicil.py + akd_manuel_arsiv.csv (AKD Sicil) · app.py Sanal Borsa canlı"
 REPO = "ysfyprk3438-debug/bist-tarama (main)"
-SON_GUNCELLEME = "AKD Sicil CANLI (akd_sicil.py + AKFGY 6 kayıt, n=1 dürüst yetersiz-örneklem) + Bekçi AKD tazelik alarmı + görsel besleme protokolü + FIZIBILITE_AKD raporu"
+# KİMLİK (değişmez): APEX tahmin motoru DEĞİLDİR; doğrulanmış eksen RİSK DİSİPLİNİdir
+# (volatilite-hedefli pozisyon boyutlama, ATR(14)×2 stop, dürüst sicil takibi).
+# Eski av/skor/al-sat/yön-tahmini dili kalıcı olarak çıkarıldı.
+KIMLIK = ("APEX tahmin motoru değildir; doğrulanmış eksen risk disiplinidir "
+          "(volatilite-hedefli pozisyon boyutlama, ATR(14)×2 stop, dürüst sicil takibi).")
+SON_GUNCELLEME = "Mühürleme: tarama_core.py arsiv'e taşındı (ölü çekirdek); durum/yol_haritası dürüst risk-yönetimi kimliğiyle yeniden mühürlendi. AKD Sicil + Bekçi AKD alarmı + görsel/toplu besleme + FIZIBILITE_AKD canlı."
 
 SU_AN = {
     "asama": "Katman 3 (Niyetin İzi — AKD/takas): AKD SİCİL hattı CANLI; "
@@ -101,6 +106,7 @@ ACIK_KALEMLER = [
 
 def durum_metni():
     s = ["APEX — DURUM", "=" * 45]
+    s.append(f"\nKİMLİK: {KIMLIK}")
     s.append(f"\nSÜRÜM: {SURUM}  ·  {AKTIF_DOSYA}")
     s.append(f"REPO: {REPO}")
     s.append(f"SON: {SON_GUNCELLEME}")
