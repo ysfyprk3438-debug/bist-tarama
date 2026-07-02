@@ -439,11 +439,11 @@ def plan_uret(k, gun):
     elif giriste and risk_gecti: durum = "GIRIS_AKTIF"
     else: durum = "BEKLE"
     neden = []
-    if giriste: neden.append(f"fiyat destege yakin (₺{destek:.2f})")
+    if giriste: neden.append(f"fiyat destege yakin ({ffiyat(destek)})")
     if rsi is not None and rsi < 35: neden.append(f"RSI dusuk (~{rsi:.0f})")
     if rsi is not None and rsi > 65: neden.append(f"RSI yuksek (~{rsi:.0f})")
     neden.append("50G ustunde" if f > ma50 else "50G altinda")
-    if dirence_yakin: neden.append(f"dirence yakin (₺{direnc:.2f})")
+    if dirence_yakin: neden.append(f"dirence yakin ({ffiyat(direnc)})")
     if anormal: neden.append("anormal hareket/oynaklik")
     if not risk_gecti and giriste:
         if yvol >= 0.70: neden.append("oynaklik filtreyi gecemedi")
@@ -622,24 +622,24 @@ def plan_html(k, gun):
         h.append(f'<div class="pgec">Giris bolgesinde ama AL suzgecinden gecemedi — eksik: {", ".join(eksik)}.</div>')
     if tam_plan:
         h.append('<div class="pgrid">')
-        h.append(f'<div class="pg"><div class="pk">giris bolgesi</div><div class="pv">₺{p["g_alt"]:.2f}–{p["g_ust"]:.2f}</div></div>')
-        h.append(f'<div class="pg"><div class="pk">stop / gecersizlik</div><div class="pv dn">₺{p["stop"]:.2f}</div></div>')
-        h.append(f'<div class="pg"><div class="pk">hedef bolgesi (direnc)</div><div class="pv">₺{p["hedef"]:.2f}</div></div>')
+        h.append(f'<div class="pg"><div class="pk">giris bolgesi</div><div class="pv">{ffiyat(p["g_alt"])}–{_trf(p["g_ust"])}</div></div>')
+        h.append(f'<div class="pg"><div class="pk">stop / gecersizlik</div><div class="pv dn">{ffiyat(p["stop"])}</div></div>')
+        h.append(f'<div class="pg"><div class="pk">hedef bolgesi (direnc)</div><div class="pv">{ffiyat(p["hedef"])}</div></div>')
         rrc = "up" if p["rr"] >= 2 else ("am" if p["rr"] >= 1 else "dn")
         h.append(f'<div class="pg"><div class="pk">risk / odul</div><div class="pv {rrc}">{p["rr"]:.2f}</div></div>')
         h.append(f'<div class="pg"><div class="pk">pozisyon (vol-target)</div><div class="pv">%{p["poz"]:.1f}</div></div>')
         h.append(f'<div class="pg"><div class="pk">beklenen vade</div><div class="pv">~{UFUK_PLAN} gun</div></div>')
         h.append('</div>')
-        h.append(f'<div class="pgec">Gecersizlik sarti: fiyat <b class="dn">₺{p["stop"]:.2f}</b> altina kapanirsa plan duser.</div>')
+        h.append(f'<div class="pgec">Gecersizlik sarti: fiyat <b class="dn">{ffiyat(p["stop"])}</b> altina kapanirsa plan duser.</div>')
     else:
         h.append('<div class="pgrid">')
-        h.append(f'<div class="pg"><div class="pk">izlenen destek</div><div class="pv">₺{p["destek"]:.2f}</div></div>')
-        h.append(f'<div class="pg"><div class="pk">izlenen direnc</div><div class="pv">₺{p["direnc"]:.2f}</div></div>')
+        h.append(f'<div class="pg"><div class="pk">izlenen destek</div><div class="pv">{ffiyat(p["destek"])}</div></div>')
+        h.append(f'<div class="pg"><div class="pk">izlenen direnc</div><div class="pv">{ffiyat(p["direnc"])}</div></div>')
         h.append(f'<div class="pg"><div class="pk">oynaklik</div><div class="pv">~%{p["yvol"]*100:.0f}</div></div>')
         h.append(f'<div class="pg"><div class="pk">pozisyon (vol-target)</div><div class="pv">%{p["poz"]:.1f}</div></div>')
         h.append('</div>')
         if p["durum"] == "BEKLE":
-            h.append(f'<div class="pgec">Plan olusmasi icin fiyatin ~₺{p["destek"]:.2f} giris bolgesine gelmesi gerekir.</div>')
+            h.append(f'<div class="pgec">Plan olusmasi icin fiyatin ~{ffiyat(p["destek"])} giris bolgesine gelmesi gerekir.</div>')
     # SICIL + BEKLENEN DEGER (tek blok) — kullaniciyi koruyan cekirdek
     h.append('<div class="psic">')
     h.append(f'<div class="psh"><span class="pshl">BU KURULUM · BU HISSE · SON 1 YIL</span><span class="vlab {gy[1]}">{gy[0]}</span></div>')
@@ -900,6 +900,11 @@ def _ozet_yaz(s):
     except Exception:
         pass
 
+def _trf(n, ond=2):
+    """Sayiyi Turk formatinda dondurur: binlik ayirici '.', ondalik ','. Orn 1234.5 -> '1.234,50'."""
+    s = f"{n:,.{ond}f}"  # once EN formati: '1,234.50'
+    return s.replace(",", "\x00").replace(".", ",").replace("\x00", ".")
+def ffiyat(n): return "₺" + _trf(n, 2)  # hisse fiyati: 2 ondalik, Turk formati (orn ₺2,78)
 def ftl(n): return "₺" + f"{round(n):,}".replace(",", ".")
 def fsig(n):
     return ("" if n >= 0 else "−") + "₺" + f"{round(abs(n)):,}".replace(",", ".")
@@ -932,7 +937,7 @@ def chart_svg(k, day):
     s = [f'<svg viewBox="0 0 {W} {H}" style="width:100%">']
     for q in range(5):
         v = lo + (hi - lo) * q / 4; y = ys(v)
-        s.append(f'<line x1="{LX}" y1="{y:.1f}" x2="{W-RX}" y2="{y:.1f}" stroke="rgba(232,228,216,.05)"/><text x="{LX-4}" y="{y+3:.1f}" text-anchor="end" font-family="monospace" font-size="8" fill="#5A616B">{v:.0f}</text>')
+        s.append(f'<line x1="{LX}" y1="{y:.1f}" x2="{W-RX}" y2="{y:.1f}" stroke="rgba(232,228,216,.05)"/><text x="{LX-4}" y="{y+3:.1f}" text-anchor="end" font-family="monospace" font-size="8" fill="#5A616B">{_trf(v)}</text>')
     s.append(f'<path d="{P(MA50)}" fill="none" stroke="#6F7A84" stroke-width="1.1" stroke-dasharray="2 3" opacity=".55"/>')
     s.append(f'<path d="{P(MA)}" fill="none" stroke="#E8B84B" stroke-width="1.1" stroke-dasharray="3 3" opacity=".6"/>')
     s.append(f'<path d="{P(PX)}" fill="none" stroke="#E8E4D8" stroke-width="2" stroke-linejoin="round"/>')
@@ -945,7 +950,7 @@ def chart_svg(k, day):
             x = xs(i); y = ys(MA[i])
             s.append(f'<path d="M{x:.1f} {y-5:.1f} L{x+5:.1f} {y:.1f} L{x:.1f} {y+5:.1f} L{x-5:.1f} {y:.1f} Z" fill="rgba(232,184,75,.18)" stroke="#E8B84B" stroke-width="1.7"/>')
     gx = xs(ve)
-    items = [dict(ty=ys(PX[ve]), t=ftl(PX[ve]).replace("₺", ""), c="#E8E4D8", b=1),
+    items = [dict(ty=ys(PX[ve]), t=_trf(PX[ve]), c="#E8E4D8", b=1),
              dict(ty=ys(MA[ve]), t="20G", c="#E8B84B", b=0),
              dict(ty=ys(MA50[ve]), t="50G", c="#6F7A84", b=0)]
     items.sort(key=lambda o: o["ty"]); cy = TY + 4
@@ -1363,7 +1368,7 @@ def v_havuz(s):
         rozet = '<span class="tstar">★</span>' if k in al_set else ""
         with col:
             H(f'<div class="tile"><div class="spark">{sparkline(k, s["day"], color)}</div>'
-              f'<div class="tk">{D["TK"][k]}{rozet}</div><div class="pxr">{ftl(price(s,k))} <span class="{cgc}">{"▲%" if cg>=0 else "▼%"}{abs(cg):.1f}</span></div>'
+              f'<div class="tk">{D["TK"][k]}{rozet}</div><div class="pxr">{ffiyat(price(s,k))} <span class="{cgc}">{"▲%" if cg>=0 else "▼%"}{abs(cg):.1f}</span></div>'
               f'<div class="scw"><div class="scl">GECMIS KAYIT</div><div class="ax"><span class="sc {sc}">~%{S["uyum"]:.0f}</span> <span class="chip {sc}">{S["band"][0]}</span></div></div></div>')
             if st.button("Incele →", key=f"open{k}"):
                 s["sel"] = k; s["tab"] = "hisse"; save_state(s); st.rerun()
@@ -1372,7 +1377,7 @@ def v_hisse(s):
     k = s["sel"]; day = s["day"]
     if st.button("← Havuza don", key="back"): s["tab"] = "havuz"; save_state(s); st.rerun()
     cg = today_pct(s, k); cgc = "up" if cg >= 0 else "dn"
-    H(f'<div class="ax" style="display:flex;align-items:baseline;gap:8px"><span class="hh">{D["TK"][k]}</span><span style="font-weight:600;font-size:18px;margin-left:auto">{ftl(price(s,k))}</span><span class="{cgc}" style="font-size:12px;font-weight:600">{"▲%" if cg>=0 else "▼%"}{abs(cg):.1f}</span></div>')
+    H(f'<div class="ax" style="display:flex;align-items:baseline;gap:8px"><span class="hh">{D["TK"][k]}</span><span style="font-weight:600;font-size:18px;margin-left:auto">{ffiyat(price(s,k))}</span><span class="{cgc}" style="font-size:12px;font-weight:600">{"▲%" if cg>=0 else "▼%"}{abs(cg):.1f}</span></div>')
     H(apex_skor_html(k, day))
     H(f'<div class="card" style="padding:8px 6px 4px">{chart_svg(k, day)}</div>')
     H('<div class="lbl" style="text-align:center;margin:-4px 0 10px">grafik: son ~4 ay · beyaz cizgi fiyat · sari 20 gunluk ortalama · gri 50 gunluk</div>')
@@ -1392,7 +1397,7 @@ def v_islem(s):
         cg = today_pct(s, k); cgc = "up" if cg >= 0 else "dn"
         h_ = k in held
         tag = ' <span class="srctag tagM">elde</span>' if h_ else ''
-        H(f'<div class="trrow"><span class="tk">{D["TK"][k]}</span><span class="px">{ftl(price(s,k))}</span><span class="cg {cgc}">{"▲%" if cg>=0 else "▼%"}{abs(cg):.1f}</span>{tag}</div>')
+        H(f'<div class="trrow"><span class="tk">{D["TK"][k]}</span><span class="px">{ffiyat(price(s,k))}</span><span class="cg {cgc}">{"▲%" if cg>=0 else "▼%"}{abs(cg):.1f}</span>{tag}</div>')
         cc = st.columns([1.4, 1, 1])
         amt = cc[0].number_input("tutar", min_value=0, step=1000, key=f"amt{k}", label_visibility="collapsed", placeholder="₺")
         if cc[1].button("AL", key=f"buy{k}", type="primary"): buy_m(s, k, amt); save_state(s); st.rerun()
@@ -1419,8 +1424,8 @@ def v_pozisyon(s):
         tag = "tagM" if src == "M" else "tagA"
         sh = ""
         if src == "A" and p.get("stop"):
-            sh = f'<br><span class="lbl">stop ₺{p["stop"]:.2f} · hedef ₺{p["hedef"]:.2f}</span>'
-        H(f'<div class="pos"><span class="tk">{D["TK"][k]}<span class="srctag {tag}">{"manuel" if src=="M" else "oto"}</span></span><div class="mid">{p["qty"]:.1f} ad · ort {ftl(avg)}<br>{ftl(val)}{sh}</div><span class="pl {"up" if pnl>=0 else "dn"}">{fsig(pnl)}<br><span class="lbl">{"+" if pp>=0 else "−"}%{abs(pp):.1f}</span></span></div>')
+            sh = f'<br><span class="lbl">stop {ffiyat(p["stop"])} · hedef {ffiyat(p["hedef"])}</span>'
+        H(f'<div class="pos"><span class="tk">{D["TK"][k]}<span class="srctag {tag}">{"manuel" if src=="M" else "oto"}</span></span><div class="mid">{p["qty"]:.1f} ad · ort {ffiyat(avg)}<br>{ftl(val)}{sh}</div><span class="pl {"up" if pnl>=0 else "dn"}">{fsig(pnl)}<br><span class="lbl">{"+" if pp>=0 else "−"}%{abs(pp):.1f}</span></span></div>')
     H('</div>')
     H(f'<div class="card"><div class="acrow"><span class="k">Nakit</span><span>{ftl(s["cash"])}</span></div><div class="acrow"><span class="k">Mevduat</span><span class="am">{ftl(s["mevduat"])}</span></div><div class="acrow" style="border-bottom:0"><span class="k">Toplam portfoy</span><span class="{"up" if tot_val(s)>=s["deposited"] else "dn"}">{ftl(tot_val(s))}</span></div></div>')
 
