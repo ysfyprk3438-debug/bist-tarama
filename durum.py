@@ -23,7 +23,7 @@ Yeni sohbette Claude önce bunu + yol_haritasi.py'yi okur.
 # ══════════════════════════════════════════════════════════════
 # ŞU AN NEREDEYİZ
 # ══════════════════════════════════════════════════════════════
-SURUM = "v18"
+SURUM = "v19"
 AKTIF_DOSYA = "akd_sicil.py + akd_manuel_arsiv.csv (AKD Sicil) · app.py Sanal Borsa canlı"
 REPO = "ysfyprk3438-debug/bist-tarama (main)"
 # KİMLİK (değişmez): APEX tahmin motoru DEĞİLDİR; doğrulanmış eksen RİSK DİSİPLİNİdir
@@ -31,12 +31,15 @@ REPO = "ysfyprk3438-debug/bist-tarama (main)"
 # Eski av/skor/al-sat/yön-tahmini dili kalıcı olarak çıkarıldı.
 KIMLIK = ("APEX tahmin motoru değildir; doğrulanmış eksen risk disiplinidir "
           "(volatilite-hedefli pozisyon boyutlama, ATR(14)×2 stop, dürüst sicil takibi).")
-SON_GUNCELLEME = "AKD çekici modülü canlı doğrulandı (GARAN 54 kurum, net_lot=na, TOPLAM=0; --tokentest 200/GEÇERLİ) — token ömrü ölçümü bekliyor."
+SON_GUNCELLEME = "İleri-test 3-çizgi SVG grafiği canlı (drawIleriChart, renk-körü dostu palet). AKD çekici doğrulandı — token ömrü ölçümü bekliyor."
 
 # ══════════════════════════════════════════════════════════════
 # GEÇMİŞ OTURUMLAR (en yeni üstte) — kısa, ne yapıldı
 # ══════════════════════════════════════════════════════════════
 GECMIS_OTURUMLAR = [
+    "2026-07-02 · İleri-test 3-çizgi SVG grafiği kuruldu (app.py drawIleriChart): Sistem "
+    "(koyu mavi düz) / Endeks (amber kesikli) / Mevduat (gri-yeşil noktalı) + legend, "
+    "renk-körü dostu. Sadece görselleştirme; ileri_seri() hesabı değişmedi.",
     "2026-07-02 · AKD çekici (akd_cekici.py) kuruldu: ForInvest web-cloud AKD hattı, "
     "token yalnız FOREKS_AUTH env, net_lot=na, --tokentest teşhis modu. Canlı doğrulandı "
     "(GARAN HTTP 200, 54 kurum, net_lot toplamı=0). Token ömrü ölçümü sıradaki.",
@@ -114,7 +117,7 @@ ACIK_KALEMLER = [
     "AKD Sicil CANLI (akd_sicil.py + akd_manuel_arsiv.csv) — arşiv büyüdükçe anlam kazanır",
     "İleri-test log birikimi: ileri_gunluk.csv (gunluk.yml, hafta içi 15:30 UTC) — tek gerçek OOS",
     "Makro: makro_guncel.json yarı-manuel (çeyreklik 2 sayı)",
-    "Kozmetik: ileri-test grafiği Endeks/Mevduat renkleri ayırt edilemiyor",
+    "İleri-test 3-çizgi SVG grafiği CANLI (drawIleriChart) — Sistem/Endeks/Mevduat, renk-körü dostu palet",
 ]
 
 
