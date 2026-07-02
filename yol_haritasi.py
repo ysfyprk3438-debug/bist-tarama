@@ -128,6 +128,10 @@ KATMANLAR = [
 # AÇIK KALEMLER (kaybolmasın)
 # ══════════════════════════════════════════════════════════════
 ACIK_KALEMLER = [
+    "AKD OTO custodian düzeltmesi (YARIN): akd_oto_topla.py _ad(it)=code (c=fiyat!); "
+    "CUSTODIAN_KODLARI sözlüğü (flag yok, kod bazlı — gerçek kodları kullanıcıyla netleştir, uydurma); "
+    "hatalı 7 test satırını silip temiz veriyle yeniden topla. Ham alan haritası kesin: "
+    "code=kurum kodu, c=fiyat, na=net adet, ta/tsa=adet, tv/tsv/tbv=değer, bp/sp=fiyat.",
     "Token ömrü ölçümü: --tokentest'i günlük çalıştır, Foreks-Auth GEÇERLİ kaldığı süreyi ölç. "
     "Kısa ömürlüyse ForInvest login akışından Foreks-Auth üretimini F12'de yakala (oto-yenileme).",
     "AKD çekici (akd_cekici.py) canlı — token ömrü netleşince 97 hisselik döngüye ölçekle.",

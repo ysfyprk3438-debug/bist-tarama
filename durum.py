@@ -114,6 +114,14 @@ DEPLOY_ADIMLARI = [
 # AÇIK KALEMLER
 # ══════════════════════════════════════════════════════════════
 ACIK_KALEMLER = [
+    "AKD OTO custodian düzeltmesi (YARIN) — (1) akd_oto_topla.py _ad(it)=it.get('code') (c=fiyat, "
+    "isim değil); lider_alici/satici KOD tutsun. (2) CUSTODIAN_KODLARI sözlüğü: ham item'da "
+    "custodian/yabancı FLAG YOK → ancak KOD bazlı tanınır; gerçek kodları ForInvest AKD kod "
+    "listesinden kullanıcıyla netleştir, UYDURMA. (3) akd_oto_arsiv.csv'deki hatalı 7 test satırını "
+    "sil, temiz veriyle yeniden topla.",
+    "AKD ham alan haritası (02.07, GARAN 54 kurum, KESİN): code=aracı kurum kodu (ZRY.B/TVM.B/…); "
+    "c=fiyat; na=net adet; ta/tsa=alış/satış adet; tv/tsv/tbv=değer; bp/sp=alış/satış fiyat. "
+    "custodian FLAG'i YOK.",
     "AKD arşivini büyüt — MAVI 6 aylık AKD görselleriyle ilk [AKD] issue testi (görsel→PR→insan)",
     "Fizibilite kararı — AKD beslemesi: manuel-görsel mi, ücretli API mi (FIZIBILITE_AKD.md)",
     "AKD sicilini Sanal Borsa hisse görünümüne entegre et (sonraki UI adımı)",
