@@ -1,125 +1,106 @@
 """
 ═══════════════════════════════════════════════════════════════
-║   APEX — DURUM PANOSU                                         ║
-║   Yeni oturumda ÖNCE BUNU + yol_haritasi.py OKU.              ║
+║                                                               ║
+║   APEX — DURUM PANOSU                                          ║
+║   BURADAYIZ. Yeni oturumda ÖNCE BUNU OKU.                     ║
+║                                                               ║
 ═══════════════════════════════════════════════════════════════
 
-Bu dosya projenin KONTROL NOKTASIDIR. Her oturum sonunda güncellenir.
-Claude yeni sohbette önce bunu okur → tüm bağlamı ve DÜSTURU alır.
-"""
+APEX bir BIST risk & analiz terminalidir — TAHMİN MOTORU DEĞİL.
+15 dk gecikmeli perakende veriyle kanıtlanmış bir yön (getiri) edge'i YOK.
+Doğrulanmış tek eksen: RİSK DİSİPLİNİ.
+  - volatilite-hedefli pozisyon boyutu
+  - ATR(14)×2 stop
+  - her okumanın kendi dürüst sicili (kaç kez oldu, sonraki ~10 gün ne yaptı)
 
-# ══════════════════════════════════════════════════════════════
-# DÜSTUR — ASLA ÖDÜN VERİLMEZ (her özellikte uygulanır)
-# ══════════════════════════════════════════════════════════════
-DUSTUR = [
-    "Yön tahmini REDDEDİLDİ: 15 dk gecikmeli perakende veriyle getiri tahmini yazı-tura. Backtest'te kanıtlandı.",
-    "Doğrulanmış tek eksen: RİSK YÖNETİMİ — vol-target pozisyon boyutlama. Gerçek BIST'te MaxDD bütçe içinde kaldı.",
-    "Hiçbir çıktıda al/sat/tahmin/hedef DİLİ yok. Her okuma yönsüz betim + KENDİ SİCİLİNİ taşır.",
-    "Kaçınma lensi ('hangi hisseden kaçınmalı') dürüst ve daha güvenilir — 'hangisini al'dan üstün.",
-    "Sistemin hesaplayamadığı şey UYDURULMAZ, açıkça söylenir. Placebo ile beta ayrıştırılır.",
-    "Kâr AMACI olabilir ama kâr GARANTİSİ asla verilmez. Kazanç yön bilmekten değil, elemeden + risk asimetrisinden gelir.",
-]
+Her okuma YÖN VERMEZ; "piyasa bunu nasıl okur / neye vurgu yapar" der.
+İsabet %40–60 ise → gri "≈ yazı-tura". Yıldız veri, tahmin değil.
+
+Bu dosya projenin KONTROL NOKTASIDIR. Her oturum SONUNDA güncellenir.
+Yeni sohbette Claude önce bunu + yol_haritasi.py'yi okur.
+"""
 
 # ══════════════════════════════════════════════════════════════
 # ŞU AN NEREDEYİZ
 # ══════════════════════════════════════════════════════════════
-SURUM = "Sanal Borsa v9 · APEX ana panel v4.4"
-SON_GUNCELLEME = (
-    "pages/01_Sanal_Borsa.py'ye Kural-Tabanlı İşlem Planı Motoru kuruldu: "
-    "AL Sinyali (çoklu süzgeç) + Beklenen Değer/Placebo (edge) + kural-tetikli "
-    "Oto-simülasyon + Forward-test paneli."
-)
+SURUM = "v14"
+AKTIF_DOSYA = "pages/01_Sanal_Borsa.py (Sanal Borsa v14)"
+REPO = "ysfyprk3438-debug/bist-tarama (main)"
+SON_GUNCELLEME = "AKFGY manuel AKD/takas doğrulaması — çekirdek tez yeniden onaylandı"
 
 SU_AN = {
-    "asama": "APEX çok sayfalı, canlı (Streamlit Cloud). Sanal Borsa büyük evrim geçirdi.",
-    "siradaki_adim": "Forward-test biriktir (tek gerçek OOS). İstersen oto sonuçlarını ana APEX paneline bağla.",
-    "bekleyen_karar": "Yok. Kural motoru + oto test edilip deploy edildi.",
-    "onemli_not": "Oto forward-test paneli backtest'in VAADİNİ (beklenen değer) gerçekleşenle yüzleştirir. "
-                  "Anlamlı yorum için haftalar-aylar gerçek veri birikmeli. Sabır = tek dürüst yol.",
+    "asama": "Katman 3 (Niyetin İzi — AKD/takas) MANUEL köprü aşamasında",
+    "son_is": (
+        "AKFGY için 6 ay aylık AKD (Oca→Haz 2026) + G/H/A/3A takas kesiti + "
+        "1G→1Y fiyat hizalandı, elle sağlandı."
+    ),
+    "cikan_sonuc": (
+        "Üst-5'te net alım (~+30,9M lot ≈ serbest dolaşımın %1,8'i, ağırlığı Ocak'ta) "
+        "ve belirgin yabancı (BofA custodian) alıcı VAR; fiyat aylık YATAY. "
+        "Bu bir alfa değil, renk. Custodian akışı niyet değil; 'ucuz F/K' 2025-3 "
+        "rayiç kazancına (%328 net marj) yaslı sahte. YÖN ÇIKMIYOR — tez doğrulandı."
+    ),
+    "siradaki_adim": (
+        "AKD desen→sicil etiketleyicisi: her manuel arşiv desenine ('yabancı 3 ay "
+        "üst-5 net alıcı' gibi) 1-yıl sicili iliştir; %40–60 isabette gri yazı-tura."
+    ),
+    "bekleyen_karar": "Yok — sıralı ilerliyoruz.",
 }
 
 # ══════════════════════════════════════════════════════════════
-# MİMARİ (canlı)
+# NE KANITLANDI / NE KANITLANMADI (çekirdek hafıza)
 # ══════════════════════════════════════════════════════════════
-MIMARI = [
-    "app.py            — ana APEX 'Güven Kerterizi' (tek dosya, gömülü HTML, 5 mod: Pusula/Havuz/Trade/Defter/Nabız). REPODA STALE, canlı sürüm farklı.",
-    "apex_app.html     — ana panelin HTML iskeleti (app.py bellekte yamalar).",
-    "pages/01_Sanal_Borsa.py — SANAL BORSA (native Streamlit, gerçek BIST). Kural motoru + oto burada. v9.",
-    "kalici.py         — BULUT kalıcılık (Google Sheets 'APEX HAFIZA'). Cüzdan + karar defteri bulutta, cihazdan bağımsız. CANLI.",
-    "veri.py           — yfinance veri katmanı: veri_al(kod,gun,min_gun,aralik) → (OHLCV df, durum).",
-    "pozisyon.py       — vol-target sizing (doğrulanmış eksen). k=2.5.",
-    "temel_veri.json   — 62 hisse temel veri (sıfır transkripsiyon hatası).",
-    "makro_guncel.json — yarı-otomatik makro (politika/enflasyon, ~çeyreklik elle).",
-    "karar_defteri.csv — MANUEL karar günlüğü (girdim/ekledim/almadım/sattım). Oto BURAYA YAZMAZ (kirletmez).",
-    "gunluk_log.py + .github/workflows/gunluk.yml — otonom günlük ileri-test (ileri_gunluk.csv).",
-    "projektor.py + projektor.yml — Telegram hikaye pipeline (Sonnet, §6/§2 uyumlu).",
-    "ui_app.py         — ÖLÜ MODÜL, asla dokunma.",
+KANITLANAN = [
+    "RİSK KONTROLÜ çalışıyor: pozisyon.py vol-hedefte gerçekleşen MaxDD bütçe altında "
+    "kaldı (örn. bütçe %1,5 → fiili %0,3). ATR(14)×2 stop, 60-gün-dip sezgisini yener.",
+    "Look-ahead bias YOK (veri-kesme testi). Para muhasebesi temiz (yaratma/yok etme yok).",
+    "Placebo baseline zorunlu: bir edge, rastgele tabanı geçmiyorsa beta'dır, alfa değil.",
+]
+KANITLANMAYAN_EDGE = [
+    "Çok-vadeli teknik, momentum, MA200 rejimi, temel, makro reel-faiz zamanlaması — "
+    "hepsi OOS + placebo'da düştü. Makro reel-faiz rejimi placebo B'de %55,7 (medyan) "
+    "= performans beta'ydı, zamanlama becerisi değil.",
+    "AKD/takas 'yabancı alıyor → al' okuması: manuel doğrulamada da yön vermedi. "
+    "Akış saklamacı-ağırlıklı; niyet okunamıyor.",
 ]
 
 # ══════════════════════════════════════════════════════════════
-# BU OTURUMDA NE YAPTIK (Sanal Borsa v5→v9 evrim)
+# DEPLOY (değişmez workflow)
 # ══════════════════════════════════════════════════════════════
-BU_OTURUM = [
-    "Havuz 8 hisse → BIST100 (KOZAA/KOZAL/KZBGY borsada yok, çıkarıldı → 97 hisse). Paralel veri çekimi (ThreadPool), toleranslı hizalama (ffill/bfill).",
-    "Mobil nav düzeltmesi: st.columns dikey yığılması → CSS nowrap ile tek yatay şerit.",
-    "Havuz skor önbelleği (aynı gün 97 hisse yeniden hesaplanmaz).",
-    "KURAL-TABANLI İŞLEM PLANI MOTORU (yönsüz, sicilli): plan_uret() → durum (Giriş Aktif/Bekle/Risk Filtresi/Kâr-Alma/Stop/Anormal) + destek/direnç (pivot) + ATR + giriş/stop/hedef/R-R + vol-target pozisyon.",
-    "SİCİL + BEKLENEN DEĞER: kurulum_analiz() → bu kurulumun bu hissedeki geçmişi (isabet) + expectancy (R, komisyon dahil) + PLACEBO (rastgele girişle karşılaştırma) → EDGE = kurulumun piyasa yönünün ÜSTÜNE kattığı (beta/alpha ayrımı).",
-    "AL SİNYALİ kademesi: giriş aktif + sicil>=%52 + R/R>=1.5 + edge>0.03 kesişimi. Çoğu hissede çıkmaz. Her zaman 'n kez oldu, garanti değil' der.",
-    "OTO-SİMÜLASYON kural-tetikli: her gün AL sinyali → sanal gir (vol-target, %50 sermaye, yarı nakit); her gün stop/hedef → çık; 21 günde bir vol-target dengele. Gerçek para yok. Her işlem deftere.",
-    "FORWARD-TEST paneli (Muhasebe→Otomatik): oto gerçek sonuçları (hedef/stop/isabet/gerçekleşen K/Z) — backtest vaadi ile gerçekleşen yüzleşir. karar_defteri kirletilmedi.",
-    "Test: 97 hisse build 48ms, plan/oto NaN sızdırmıyor, expectancy medyanı ~0 (dürüst), oto sim isabet %48 ama R/R asimetrisiyle K/Z pozitif.",
+DEPLOY_ADIMLARI = [
+    "1. GitHub web editor → dosyayı aç → Ctrl+A → Delete → yapıştır → Commit",
+    "2. share.streamlit.io → Reboot",
+    "3. SURUM sabitini artır → app reboot'suz cache tazelenir",
+    "NOT: ui_app.py'ye DOKUNMA (ölü paralel modül).",
+    "NOT: .github/workflows/*.yml GitHub App token'ıyla yazılamaz — Yusuf web UI'dan elle.",
 ]
 
 # ══════════════════════════════════════════════════════════════
-# KURAL MOTORU — İÇ MİMARİ (Sanal_Borsa.py, hızlı hatırlatma)
+# AÇIK KALEMLER
 # ══════════════════════════════════════════════════════════════
-MOTOR_HARITASI = [
-    "atr_at / _pivotlar / sd_seviye → destek, direnç, ATR (Close-only, pivot w=4 look=70).",
-    "plan_uret(k,gun) → durum + giriş/stop/hedef/R-R/pozisyon/neden. Stop=destek-1ATR, Hedef=direnç.",
-    "kurulum_analiz(k) → sicil (isabet) + exp + placebo + EDGE (komisyon 2*COM dahil). UFUK_PLAN=10 gün.",
-    "al_sinyali(k,gun) → 4 süzgeç kesişimi {olgun, sicil>=52, rr>=1.5, edge>0.03}.",
-    "plan_html(k,gun) → hisse sekmesindeki İşlem Planı kartı (AL rozeti + beklenen değer + sicil).",
-    "oto_giris_kontrol (günlük) / oto_cikis_kontrol (günlük stop-hedef) / apex_reb (21g vol-target dengele).",
-    "Oto pozisyonda stop+hedef GİRİŞ anında sabitlenir (posA[k]['stop'/'hedef']).",
-]
-
-# ══════════════════════════════════════════════════════════════
-# DEPLOY YÖNTEMİ (Yusuf geliştirici değil — bu akış sabit)
-# ══════════════════════════════════════════════════════════════
-DEPLOY = [
-    "Repo: ysfyprk3438-debug/bist-tarama (main). Streamlit Community Cloud.",
-    "Yöntem: GitHub web editör → dosyayı aç → kalem (Edit) → Ctrl+A → Delete → yapıştır → Commit.",
-    "Yeni dosya: Add file → Create new file. Workflow (.github/workflows/) SADECE elle (App token yazamaz).",
-    "Deploy sonrası: share.streamlit.io → Reboot.",
-    "Modül cache: dosya güncellenince '# surum N' yorumunu ARTIR (Streamlit re-import).",
-    "app.py 1. satırı DAİMA '# -*- coding: utf-8 -*-' (shebang yok — yapıştırma kırıyor).",
-    "Doğrulama: mobil ekran görüntüsü.",
-]
-
-# ══════════════════════════════════════════════════════════════
-# SIRADAKİ HEDEFLER
-# ══════════════════════════════════════════════════════════════
-SONRAKI = [
-    "Forward-test accumulation — tek gerçek OOS. Sabır. Oto paneldeki edge olgunlaşınca gerçek mi beta mı BELLİ olur.",
-    "İstersen: oto forward-test sonuçlarını ana APEX paneline (Nabız/Defter) bağla — ölç, uydurma.",
-    "Doğrulanabilir makro oto-kaynak (TCMB coğrafi bloklu, OECD kırılgan) — bulunursa cron'a ekle.",
-    "Karar Günlüğü outcome resolution (placebo baz %50; %42 altı ters-seçim uyarısı).",
-    "ForInvest AKD/takas manuel arşiv besleme (yinelenen açık kalem).",
+ACIK_KALEMLER = [
+    "AKD/takas manuel arşiv entegrasyonu (ForInvest, elle) — süregelen açık kalem",
+    "AKD desen→sicil etiketleyici (sıradaki iş)",
+    "İleri-test log birikimi: ileri_gunluk.csv (gunluk.yml, hafta içi 15:30 UTC) — tek gerçek OOS",
+    "Makro: makro_guncel.json yarı-manuel (çeyreklik 2 sayı)",
+    "Kozmetik: ileri-test grafiği Endeks/Mevduat renkleri ayırt edilemiyor",
 ]
 
 
 def durum_metni():
-    s = ["APEX — DURUM", "=" * 45, f"\nSÜRÜM: {SURUM}", f"{SON_GUNCELLEME}\n"]
-    s.append("DÜSTUR:")
-    for d in DUSTUR:
-        s.append(f"  • {d}")
+    s = ["APEX — DURUM", "=" * 45]
+    s.append(f"\nSÜRÜM: {SURUM}  ·  {AKTIF_DOSYA}")
+    s.append(f"REPO: {REPO}")
+    s.append(f"SON: {SON_GUNCELLEME}")
     s.append(f"\nŞU AN: {SU_AN['asama']}")
+    s.append(f"ÇIKAN SONUÇ: {SU_AN['cikan_sonuc']}")
     s.append(f"SIRADAKİ: {SU_AN['siradaki_adim']}")
-    s.append(f"NOT: {SU_AN['onemli_not']}")
-    s.append("\nSONRAKİ HEDEFLER:")
-    for h in SONRAKI:
-        s.append(f"  → {h}")
+    s.append("\nKANITLANAN:")
+    for k in KANITLANAN:
+        s.append(f"  ✓ {k}")
+    s.append("\nEDGE ÇIKMAYAN:")
+    for k in KANITLANMAYAN_EDGE:
+        s.append(f"  ✗ {k}")
     return "\n".join(s)
 
 
