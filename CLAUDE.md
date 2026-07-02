@@ -88,15 +88,31 @@ Telegram         → gunluk tek mesaj
   sablonuna `__APP_DATA__` enjekte. Risk ekseni (hisse-basi vol-target Poz + ATR stop) + ileri-test egrisi calisir.
 - **Ileri-test (tek durust OOS):** `gunluk_log.py` + `.github/workflows/gunluk.yml` (hafta-ici 18:30 TR)
   → `ileri_gunluk.csv`; app `ileri_seri()` ile okur. Risk/rejim-durus disiplinini olcer, getiriyi OLCMEZ.
+- **Bekci (gece saglik kontrolu):** `bekci.py` + `bekci.yml` (hafta-ici 18:45 TR). Sozdizimi (ast) +
+  fiyat tazeligi (THYAO/GARAN/AKFGY, son islem gunu) + CSV butunlugu + **AKD arsivi tazeligi** (35+ gun bayat
+  → SARI "besleme gerekli"). Bulgu yoksa Telegram tek satir; varsa spam-korumali `bekci` etiketli issue +
+  @claude gorevi (BEKCI_PAT ile), merge insanda. Env yoksa sessiz atlar, cron cokmez.
+- **AKD Sicil:** `akd_manuel_arsiv.csv` (manuel aylik AKD; app.py'nin OTOMATIK `akd_arsiv.csv` broker
+  arsiviyle KARISMAZ — ayri dosya) + `akd_sicil.py` (bagimsiz; stdlib + veri.veri_al). Desenlere
+  (3-ay net alici, custodian %40+, ilk5 yon degisimi) sicil bicer: capa = donem BITISI (look-ahead YOK),
+  sonraki 10 islem gunu getirisi, vade dolmadiysa "beklemede" (skor_motoru muhurleme mantigi). Isabet
+  %40–60 → "≈ yazi-tura", n<5 → yetersiz orneklem. YON TAHMINI YOK. Arsiv buyudukce anlam kazanir.
+- **AKD besleme hatlari:** yari-otomatik gorsel (Bolum 11, `[AKD]` issue) + TOPLU gorsel
+  (`akd_gorsel_kutusu/` + Bolum 12, `[AKD-TOPLU]` issue). Ikisi de PR acar, main'e YAZMAZ; okunamaz veri
+  `kontrol_gerekli.csv`'ye duser (uydurma yok).
 - **Makro:** `makro_guncel.json` (varsa rejim onu okur, yoksa statik tablo). Ceyrekte bir 2 sayi elle.
-- **ESKI cok-modullu dosyalar** (analiz.py, karar.py, robot.py ...): arsiv/referans; canli sistem KULLANMIYOR.
+- **AKD/takas dis erisim:** `FIZIBILITE_AKD.md` — programatik erisim secenekleri + risk (takas 1 Oca 2025'ten
+  lisansli; ForInvest scraping = hesap riski). Karar bekliyor; su an manuel/gorsel hat.
+- **ESKI cok-modullu dosyalar** (analiz.py, karar.py, robot.py ...): **PR #14 ile fiziksel olarak `arsiv/`
+  klasorune tasindi** (42 dosya). Canli sistem KULLANMIYOR; import etme — referans/tarih.
 
 ## 9. DEPLOYMENT PROTOKOLU
 - **Kod git ile gelir** (@claude PR merge) — kopyala-yapistir YOK. Streamlit, main'e push'ta yeniden yayinlar.
 - **Tazeleme:** app.py icindeki `SURUM` sabiti artirilir (`_veri(_surum=SURUM)` cache anahtari);
   bu oturumda reboot GEREKMEDEN tazeledigi dogrulandi. Cache takilirsa tam reboot (share.streamlit.io → Reboot).
-- **Workflow dosyalari (`.github/workflows/`):** GITHUB_TOKEN buraya yazamaz → bunlar kullanici tarafindan
-  web UI'dan ELLE olusturulur (claude.yml, gunluk.yml boyle eklendi).
+- **Workflow dosyalari (`.github/workflows/`):** @claude'un GitHub App token'i buraya YAZAMAZ (guvenlik).
+  Ama laptop'tan `gh` (workflow scope) ile push EDILEBILIR — bekci.yml boyle eklendi, action surumleri boyle guncellendi.
+  Yani: @claude PR'i workflow dosyasina dokunamaz; workflow degisikligi Yusuf'un laptop'undan gelir.
 - **Sirlar** (token/API key) ASLA koda yazilmaz; GitHub Secrets'ta (`CLAUDE_CODE_OAUTH_TOKEN` orn.).
 - Repo: `ysfyprk3438-debug/bist-tarama` (main).
 
@@ -167,4 +183,5 @@ Parti basi ~40 gorsel (Adim 1); fazlasi birden fazla issue/PR olarak islenir (oz
 ---
 > Ozet: Insan kodu PR'dan gecer, insan merge eder (kapi). Bot veri commit'leri main'e dogrudan.
 > Cekirdek matematik deterministik; LLM yalniz baglam/metin. Sonuc uydurma, test edemedigini
-> "otomatik" diye sunma, bug gorunce soyle. Siradaki: baglam_motor.py (@claude issue) — kap_oku.py uzerine.
+> "otomatik" diye sunma, bug gorunce soyle. Siradaki: AKD toplu gorsel hattinin 5-10 gorselle prova turu →
+> iyiyse 500 gorsele olcekle → fizibilite karari → AKD sicilini Sanal Borsa hisse gorunumune entegre et.
