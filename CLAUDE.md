@@ -125,6 +125,38 @@ goruntulerini yapistirir + hisse adi ve donem tipini (gunluk/haftalik/aylik/3ayl
 fiyattan otomatik yeniden hesaplanir. Yon tahmini / AL-SAT dili YOK (bkz. Bolum 2). Bekci, arsiv 35+ gun
 bayatlarsa SARI uyarir (besleme hatirlatmasi).
 
+## 12. AKD TOPLU GORSEL PROTOKOLU (yuzlerce gorseli tek seferde)
+Amac: Kullanici `akd_gorsel_kutusu/` klasorune YUZLERCE ForInvest ekran goruntusu atar; @claude hepsini
+hisseye gore ayiklayip `akd_manuel_arsiv.csv`'ye dagitir. Bolum 11'in TOPLU (batch) surumu. **Rakam
+dogrulamasi yine insanda; main'e DOGRUDAN yazilmaz.** Okunamayan/supheli veri UYDURULMAZ — ayri listeye dusurulur.
+
+**Tetik:** Kullanici bir issue'da (`[AKD-TOPLU]` onekli, `akd-toplu` sablonu) "gorselleri isle" der + @claude'u etiketler.
+
+**@claude adimlari:**
+1. `akd_gorsel_kutusu/` icindeki gorselleri oku — **`islenmis/` alt klasorunu HARIC tut** (onlar bitti).
+2. HER gorsel icin tespit et:
+   - **hisse kodu** (ekranin ust kismindaki sembol, orn AKFGY/THYAO),
+   - **ekran tipi** (icerikten anla: takas-gunluk/haftalik/aylik/3aylik · fiyat grafigi · temel veri),
+   - **donem tarih araligi** (tarih_baslangic / tarih_bitis).
+3. **Takas/AKD ekranlarindan** cikar: `ilk5_net_lot`, `lider_alici` + `lider_alici_pct`, `lider_satici` +
+   `lider_satici_pct`, varsa `custodian_net_lot`. **Fiyat grafigi / temel veri ekranlarini "ilgisiz" say, ATLA**
+   (csv'ye yazma; ozet'te "ilgisiz: N" olarak say).
+4. Her takas kaydini `akd_manuel_arsiv.csv` semasina yaz (kolon sirasi birebir). **Bir alani net okuyamiyorsan
+   o alani BOS birak** — tahmin etme.
+5. **GUVEN KONTROLU (uydurma bariyeri):** Bir gorselde (a) hisse kodu okunamiyorsa, (b) rakamlar celiskiliyse,
+   veya (c) ekran tipi belirsizse → o gorseli `akd_manuel_arsiv.csv`'ye **YAZMA**. Bunun yerine
+   **`kontrol_gerekli.csv`**'ye satir ekle — kolonlar: `gorsel_dosya, sorun, tahmin`
+   (`tahmin` = en iyi okuma denemen, insan bakabilsin diye; kesin degil).
+6. Islenen HER gorseli (basarili csv VEYA kontrol_gerekli — ikisi de "islendi") `akd_gorsel_kutusu/islenmis/`
+   altina TASI ki bir daha islenmesin. Ilgisiz (fiyat/temel) gorselleri de islenmis'e tasi.
+7. Idempotent ol: ayni (`hisse`, `tarih_bitis`) zaten `akd_manuel_arsiv.csv`'de varsa tekrar EKLEME.
+8. **OZET cikar** (PR aciklamasina): kac gorsel islendi · kac hisse/kayit eklendi · kac ilgisiz atlandi ·
+   kac kayit `kontrol_gerekli.csv`'ye dustu (ve neden). Her eklenen satir icin "gorselden su okundu" notu.
+9. **PR AC — main'e DOGRUDAN YAZMA.** Insan diff'te rakamlari + kontrol_gerekli listesini gozden gecirir, merge eder.
+
+**Sinir:** Toplu hat da SADECE veri girisi. `akd_sicil.py` / desenlere dokunma. Yon tahmini / AL-SAT YOK.
+Baglam siniri: bir partide ~50 gorsel; daha fazlasi birden fazla issue/PR olarak islenir (ozet'te belirt).
+
 ---
 > Ozet: Insan kodu PR'dan gecer, insan merge eder (kapi). Bot veri commit'leri main'e dogrudan.
 > Cekirdek matematik deterministik; LLM yalniz baglam/metin. Sonuc uydurma, test edemedigini
