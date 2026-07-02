@@ -37,6 +37,10 @@ SON_GUNCELLEME = "İleri-test 3-çizgi SVG grafiği canlı (drawIleriChart, renk
 # GEÇMİŞ OTURUMLAR (en yeni üstte) — kısa, ne yapıldı
 # ══════════════════════════════════════════════════════════════
 GECMIS_OTURUMLAR = [
+    "2026-07-02 · OTURUM KAPANIŞI — tarama_core arsiv'e + dürüst kimlik mühürlemesi; "
+    "KOD_SEKTOR bağımsız sektor_map.py'ye koparıldı; AKD çekici (akd_cekici.py) kuruldu ve "
+    "canlı doğrulandı (GARAN 200/54 kurum); --tokentest token ölçüm günlüğü (token_gunluk.csv, "
+    "gitignore'lu); ileri-test 3-çizgi SVG grafiği canlı. Hepsi main'de.",
     "2026-07-02 · İleri-test 3-çizgi SVG grafiği kuruldu (app.py drawIleriChart): Sistem "
     "(koyu mavi düz) / Endeks (amber kesikli) / Mevduat (gri-yeşil noktalı) + legend, "
     "renk-körü dostu. Sadece görselleştirme; ileri_seri() hesabı değişmedi.",

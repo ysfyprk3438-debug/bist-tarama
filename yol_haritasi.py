@@ -66,6 +66,7 @@ TAMAMLANAN = [
     ("AKD çekici (akd_cekici.py) — ForInvest web-cloud AKD hattı; token yalnız FOREKS_AUTH env, "
      "net_lot=na, --tokentest teşhis modu. Canlı doğrulandı (GARAN 200, 54 kurum, net toplamı=0). "
      "97 hisselik döngü token ömrü ölçümüne bağlı", "✅"),
+    ("İleri-test 3-çizgi SVG grafiği (Sistem/Endeks/Mevduat, renk-körü dostu palet, canlı doğrulandı)", "✅"),
 ]
 
 # ══════════════════════════════════════════════════════════════
