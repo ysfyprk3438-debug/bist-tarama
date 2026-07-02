@@ -1482,7 +1482,7 @@ body{background:var(--ink);color:var(--bone);font-family:var(--body);line-height
     <div class="card"><div class="k">Risk disiplini</div><div class="v up">Dogrulandi</div>
       <div class="s">vol-target + ATR stop · sicil %92</div><div class="micro"></div></div>
     <div class="card"><div class="k">Ileri-test · onde</div><div class="v" id="c-ileri">—</div>
-      <div class="s" id="c-ileri-s">tek durust OOS</div><div class="micro"></div></div>
+      <div class="s" id="c-ileri-s">tek durust OOS</div><div class="micro"></div><div id="ileri-cizim"></div></div>
   </div>
 
   <div class="sec"><h3>Havuz</h3><div class="ln"></div><div class="meta" id="pool-meta">—</div></div>
@@ -1699,6 +1699,37 @@ function ogretmenKutu(s){
     '</div></details>';
 }
 
+// Ileri-test 3-cizgi grafik (Sistem/Endeks/Mevduat kumulatif seyir).
+// SADECE gorsellestirme: ileri_seri()'nin urettigi dizileri cizer, hesaba dokunmaz.
+// Bos/kisa veri -> cizim yok, hata yok.
+function drawIleriChart(il){
+  var box=document.getElementById('ileri-cizim');
+  if(!box) return;
+  if(!il||!il.sistem||!il.endeks||!il.mevduat||il.sistem.length<2){box.innerHTML='';return;}
+  var S=il.sistem,E=il.endeks,M=il.mevduat,n=S.length;
+  var lo=Infinity,hi=-Infinity;
+  [S,E,M].forEach(function(a){for(var i=0;i<a.length;i++){var v=a[i];if(num(v)){if(v<lo)lo=v;if(v>hi)hi=v;}}});
+  if(!num(lo)||!num(hi)||hi<=lo){box.innerHTML='';return;}
+  var W=320,H=92,PL=6,PR=6,PT=8,PB=8,iw=W-PL-PR,ih=H-PT-PB;
+  function X(i){return PL+(i/(n-1))*iw;}
+  function Y(v){return PT+(1-(v-lo)/(hi-lo))*ih;}
+  function pth(a){var d='',i;for(i=0;i<a.length;i++){d+=(i?'L':'M')+X(i).toFixed(1)+' '+Y(a[i]).toFixed(1)+' ';}return d;}
+  var base=(lo<=100&&hi>=100)?'<line x1="'+PL+'" y1="'+Y(100).toFixed(1)+'" x2="'+(W-PR)+'" y2="'+Y(100).toFixed(1)+'" stroke="#2A3742" stroke-width="0.8" stroke-dasharray="2 3" opacity="0.55"/>':'';
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block;margin-top:8px" '
+    +'role="img" aria-label="Ileri-test kumulatif seyir: Sistem, Endeks, Mevduat">'
+    +base
+    +'<path d="'+pth(M)+'" fill="none" stroke="#6b8e6b" stroke-width="1.5" stroke-dasharray="1 4" stroke-linecap="round" stroke-linejoin="round"/>'
+    +'<path d="'+pth(E)+'" fill="none" stroke="#e8820c" stroke-width="1.6" stroke-dasharray="5 3" stroke-linejoin="round"/>'
+    +'<path d="'+pth(S)+'" fill="none" stroke="#1f4e79" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>'
+    +'</svg>';
+  var leg='<div style="display:flex;gap:12px;flex-wrap:wrap;font-family:var(--mono);font-size:9.5px;color:var(--dim);margin-top:5px">'
+    +'<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:15px;border-top:2.5px solid #1f4e79"></span>Sistem</span>'
+    +'<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:15px;border-top:2px dashed #e8820c"></span>Endeks</span>'
+    +'<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:15px;border-top:2px dotted #6b8e6b"></span>Mevduat</span>'
+    +'</div>';
+  box.innerHTML=svg+leg;
+}
+
 function renderDash(){
   var rej=APP.rejim||{};
   document.getElementById('r-rejim').textContent='rejim '+(rej.durus||'—')+' · reel %'+sgn(rej.reel);
@@ -1720,6 +1751,7 @@ function renderDash(){
     document.getElementById('c-ileri-s').textContent='N='+il.n+' · MaxDD Sistem '+il.dd_sistem+'%';}
   else{document.getElementById('c-ileri').textContent='—';
     document.getElementById('c-ileri-s').textContent='henuz kayit yok · hafta ici 18:30 beslenir';}
+  drawIleriChart(il);
   APP._idx={};(APP.stocks||[]).forEach(function(s,i){APP._idx[s.tk]=i;});
   document.getElementById('pool-meta').textContent=(APP.stocks||[]).length+' hisse · '+APP.n_veri+' canli';
   renderSortbar();renderPool();
