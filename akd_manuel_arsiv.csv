@@ -1,0 +1,7 @@
+tarih_baslangic,tarih_bitis,hisse,donem_tipi,ilk5_net_lot,lider_alici,lider_alici_pct,lider_satici,lider_satici_pct,custodian_net_lot,not
+2026-01-01,2026-01-31,AKFGY,aylik,22050000,İŞ,,,,,aylık ilk5 net; lider alıcı İŞ
+2026-02-01,2026-02-28,AKFGY,aylik,-2070000,,,ZİRAAT,,,aylık ilk5 net; lider satıcı ZİRAAT
+2026-03-01,2026-03-31,AKFGY,aylik,-410000,,,QNB,,,aylık ilk5 net; lider satıcı QNB
+2026-04-01,2026-04-30,AKFGY,aylik,8730000,BofA,,,,,aylık ilk5 net; lider alıcı BofA (custodian)
+2026-05-01,2026-05-31,AKFGY,aylik,4860000,BofA,,,,,aylık ilk5 net; lider alıcı BofA (custodian)
+2026-06-01,2026-06-30,AKFGY,aylik,-2220000,,,DENİZ,,,aylık ilk5 net; lider satıcı DENİZ
