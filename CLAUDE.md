@@ -105,6 +105,26 @@ Telegram         → gunluk tek mesaj
 - Her yeni sinyal/strateji leakage'siz + maliyetli (komisyon+slippage) backtest'te test edilebilir olmali.
 - Karar t kapanisinda, getiri t+1 (gelecege bakma yok). "Iyilestirdim" demeden once: olculur mu, hangi citaya karsi, kanit ne?
 
+## 11. AKD GORSEL ISLEME PROTOKOLU (yari-otomatik besleme)
+Amac: ForInvest AKD ekranlarini elle CSV'ye gecirme yukunu azaltmak — ama RAKAM DOGRULAMASI insanda kalir.
+
+**Tetik:** Kullanici bir issue'ya (tercihen `[AKD]` onekli, `akd-besleme` sablonu) ForInvest AKD ekran
+goruntulerini yapistirir + hisse adi ve donem tipini (gunluk/haftalik/aylik/3aylik) yazar + `@claude`'u etiketler.
+
+**@claude gorevi:**
+1. Goruntulerden OKU: donem (`tarih_baslangic`/`tarih_bitis`), `ilk5_net_lot` (Ilk-5 net lot),
+   `lider_alici` + `lider_alici_pct`, `lider_satici` + `lider_satici_pct`, varsa `custodian_net_lot`
+   (BofA/Citi/Deutsche gibi saklamacilarin net toplami).
+2. `akd_manuel_arsiv.csv` semasina YENI SATIR(lar) olarak ekle — mevcut kolon sirasi birebir korunur.
+3. OKUNAMAYAN alani BOS birak — TAHMIN ETME, uydurma YOK. Bulanik/kesik ise bos + `not` alanina "gorsel belirsiz".
+4. **PR AC — DOGRUDAN main'e YAZMA.** Rakamlarin dogrulugu insan gozuyle diff'te kontrol edilir, sonra insan merge eder.
+5. Idempotent ol: ayni (`hisse`, `tarih_bitis`) zaten arsivde varsa tekrar EKLEME; PR aciklamasinda belirt.
+6. PR aciklamasina okudugun her satiri "gorselden su okundu" seklinde YAZ ki insan hizli dogrulayabilsin.
+
+**Sinir:** Bu hat SADECE veri girisi. `akd_sicil.py` mantigina/desenlere DOKUNMA — sicil, arsiv + canli
+fiyattan otomatik yeniden hesaplanir. Yon tahmini / AL-SAT dili YOK (bkz. Bolum 2). Bekci, arsiv 35+ gun
+bayatlarsa SARI uyarir (besleme hatirlatmasi).
+
 ---
 > Ozet: Insan kodu PR'dan gecer, insan merge eder (kapi). Bot veri commit'leri main'e dogrudan.
 > Cekirdek matematik deterministik; LLM yalniz baglam/metin. Sonuc uydurma, test edemedigini
