@@ -63,6 +63,9 @@ TAMAMLANAN = [
     ("Mühürleme — tarama_core.py arsiv'e taşındı (ölü çekirdek; canlı sistemde kullanılmıyor). "
      "Kimlik yeniden mühürlendi: APEX tahmin motoru DEĞİL, doğrulanmış eksen risk disiplini "
      "(vol-hedef Poz + ATR(14)×2 stop + dürüst sicil). Eski av/skor/al-sat dili çıkarıldı", "✅"),
+    ("AKD çekici (akd_cekici.py) — ForInvest web-cloud AKD hattı; token yalnız FOREKS_AUTH env, "
+     "net_lot=na, --tokentest teşhis modu. Canlı doğrulandı (GARAN 200, 54 kurum, net toplamı=0). "
+     "97 hisselik döngü token ömrü ölçümüne bağlı", "✅"),
 ]
 
 # ══════════════════════════════════════════════════════════════
@@ -124,6 +127,9 @@ KATMANLAR = [
 # AÇIK KALEMLER (kaybolmasın)
 # ══════════════════════════════════════════════════════════════
 ACIK_KALEMLER = [
+    "Token ömrü ölçümü: --tokentest'i günlük çalıştır, Foreks-Auth GEÇERLİ kaldığı süreyi ölç. "
+    "Kısa ömürlüyse ForInvest login akışından Foreks-Auth üretimini F12'de yakala (oto-yenileme).",
+    "AKD çekici (akd_cekici.py) canlı — token ömrü netleşince 97 hisselik döngüye ölçekle.",
     "AKD arşivini büyüt — MAVI 6 aylık AKD görselleriyle ilk [AKD] issue testi (görsel→@claude→PR→insan).",
     "Fizibilite kararı — AKD beslemesi manuel-görsel mi, ücretli API mi (FIZIBILITE_AKD.md).",
     "AKD sicilini Sanal Borsa hisse görünümüne entegre et (sonraki UI adımı).",

@@ -23,7 +23,7 @@ Yeni sohbette Claude önce bunu + yol_haritasi.py'yi okur.
 # ══════════════════════════════════════════════════════════════
 # ŞU AN NEREDEYİZ
 # ══════════════════════════════════════════════════════════════
-SURUM = "v17"
+SURUM = "v18"
 AKTIF_DOSYA = "akd_sicil.py + akd_manuel_arsiv.csv (AKD Sicil) · app.py Sanal Borsa canlı"
 REPO = "ysfyprk3438-debug/bist-tarama (main)"
 # KİMLİK (değişmez): APEX tahmin motoru DEĞİLDİR; doğrulanmış eksen RİSK DİSİPLİNİdir
@@ -31,7 +31,21 @@ REPO = "ysfyprk3438-debug/bist-tarama (main)"
 # Eski av/skor/al-sat/yön-tahmini dili kalıcı olarak çıkarıldı.
 KIMLIK = ("APEX tahmin motoru değildir; doğrulanmış eksen risk disiplinidir "
           "(volatilite-hedefli pozisyon boyutlama, ATR(14)×2 stop, dürüst sicil takibi).")
-SON_GUNCELLEME = "Mühürleme: tarama_core.py arsiv'e taşındı (ölü çekirdek); durum/yol_haritası dürüst risk-yönetimi kimliğiyle yeniden mühürlendi. AKD Sicil + Bekçi AKD alarmı + görsel/toplu besleme + FIZIBILITE_AKD canlı."
+SON_GUNCELLEME = "AKD çekici modülü canlı doğrulandı (GARAN 54 kurum, net_lot=na, TOPLAM=0; --tokentest 200/GEÇERLİ) — token ömrü ölçümü bekliyor."
+
+# ══════════════════════════════════════════════════════════════
+# GEÇMİŞ OTURUMLAR (en yeni üstte) — kısa, ne yapıldı
+# ══════════════════════════════════════════════════════════════
+GECMIS_OTURUMLAR = [
+    "2026-07-02 · AKD çekici (akd_cekici.py) kuruldu: ForInvest web-cloud AKD hattı, "
+    "token yalnız FOREKS_AUTH env, net_lot=na, --tokentest teşhis modu. Canlı doğrulandı "
+    "(GARAN HTTP 200, 54 kurum, net_lot toplamı=0). Token ömrü ölçümü sıradaki.",
+    "2026-07-02 · Mühürleme: tarama_core.py arsiv'e; KOD_SEKTOR → bağımsız sektor_map.py; "
+    "dürüst risk-yönetimi kimliği yeniden mühürlendi (av/skor/al-sat dili yok).",
+    "2026-07-02 · AKD Sicil canlı (akd_manuel_arsiv.csv + akd_sicil.py); Bekçi'ye AKD "
+    "tazelik alarmı; yarı-otomatik + toplu görsel besleme protokolü; FIZIBILITE_AKD.md; "
+    "Node20 workflow sürümleri güncellendi.",
+]
 
 SU_AN = {
     "asama": "Katman 3 (Niyetin İzi — AKD/takas): AKD SİCİL hattı CANLI; "
@@ -119,6 +133,9 @@ def durum_metni():
     s.append("\nEDGE ÇIKMAYAN:")
     for k in KANITLANMAYAN_EDGE:
         s.append(f"  ✗ {k}")
+    s.append("\nGEÇMİŞ OTURUMLAR (son 3):")
+    for o in GECMIS_OTURUMLAR[:3]:
+        s.append(f"  • {o}")
     return "\n".join(s)
 
 
