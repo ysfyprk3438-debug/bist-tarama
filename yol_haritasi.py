@@ -53,6 +53,13 @@ TAMAMLANAN = [
     ("Bekçi — gece sağlık kontrolü (bekci.py + bekci.yml, hafta içi 18:45 TR): sözdizimi+fiyat "
      "tazeliği+CSV; yeşilse Telegram tek satır, bulguda BEKCI_PAT ile bekci etiketli issue + "
      "@claude görevlendirme, merge insanda", "✅"),
+    ("AKD Sicil — akd_manuel_arsiv.csv (AKFGY 6 kayıt) + akd_sicil.py: 3 desen, çapa=dönem bitişi, "
+     "sonraki 10 işlem günü getirisi (mühürleme tutarlı), %40–60 «≈ yazı-tura», n<5 yetersiz örneklem. "
+     "Bugün n=1 (dürüst damgalı)", "✅"),
+    ("Bekçi'ye AKD tazelik alarmı — arşiv 35+ gün bayatsa SARI 'besleme gerekli'", "✅"),
+    ("AKD yarı-otomatik görsel besleme protokolü — CLAUDE.md §11 + [AKD] issue şablonu "
+     "(görsel→@claude→PR→insan doğrular; main'e yazma)", "✅"),
+    ("FIZIBILITE_AKD.md — AKD/takas programatik erişim araştırması (seçenekler+risk+tavsiye; karar bekliyor)", "✅"),
 ]
 
 # ══════════════════════════════════════════════════════════════
@@ -99,12 +106,14 @@ KATMANLAR = [
         "ozet": "Fiyat+hacim gölgesinden gerçek emir defteri + aracı kurum dağılımı (AKD) "
                 "+ takas verisine. Toplama/dağıtım burada gölge değil somut iz bırakır. "
                 "Ama yine YÖN TAHMİNİ DEĞİL — sadece risk/kaçınma lensini zenginleştirir. "
-                "MANUEL köprü aşamasında: AKFGY doğrulaması yön VERMEDİ (tez teyit).",
-        "nasil": "ForInvest AKD/takas manuel arşivini besle (yinelenen açık kalem). "
-                 "Sıradaki somut adım: AKD desen→sicil etiketleyici — AKFGY manuel arşivi "
-                 "ilk kayıt; her desene 1-yıl sicili iliştir, %40–60 isabette gri yazı-tura. "
-                 "stockScreener çalışıyor; settlement/order-book backend şu an kapalı.",
-        "onkosul": "🔒 ForInvest AKD/takas verisi (backend down — manuel arşiv).",
+                "AKFGY doğrulaması yön VERMEDİ (tez teyit). SİCİL MAKİNESİ CANLI (akd_sicil.py) "
+                "ama örneklem 1 = anlamsız; arşiv büyümeden sicil konuşmaz.",
+        "nasil": "AKD Sicil hattı kuruldu: akd_manuel_arsiv.csv + akd_sicil.py (3 desen, "
+                 "10-gün getiri, mühürleme tutarlı, yazı-tura/yetersiz-örneklem damgası). "
+                 "Besleme: yarı-otomatik görsel hat (CLAUDE.md §11 + [AKD] issue → @claude PR → "
+                 "insan doğrular). Sıradaki: MAVI 6 aylık görselle arşivi büyüt; fizibilite kararı "
+                 "(FIZIBILITE_AKD.md); sonra Sanal Borsa'ya entegre. Takas 1 Oca 2025'ten beri lisanslı.",
+        "onkosul": "🔒 ForInvest AKD/takas verisi (backend down — manuel/görsel arşiv; API için FIZIBILITE_AKD.md).",
     },
 ]
 
@@ -112,11 +121,12 @@ KATMANLAR = [
 # AÇIK KALEMLER (kaybolmasın)
 # ══════════════════════════════════════════════════════════════
 ACIK_KALEMLER = [
+    "AKD arşivini büyüt — MAVI 6 aylık AKD görselleriyle ilk [AKD] issue testi (görsel→@claude→PR→insan).",
+    "Fizibilite kararı — AKD beslemesi manuel-görsel mi, ücretli API mi (FIZIBILITE_AKD.md).",
+    "AKD sicilini Sanal Borsa hisse görünümüne entegre et (sonraki UI adımı).",
     "Bekçi'nin ilk gerçek gece turunu izle (bekci.yml, hafta içi 18:45 TR).",
-    "AKD desen→sicil etiketleyici (AKFGY manuel arşivi ilk kayıt).",
     "Doğrulanabilir makro oto-kaynak (TCMB coğrafi bloklu, OECD API kırılgan). Bulunursa cron'a ekle.",
     "Karar Günlüğü outcome resolution — kararlar olgunlaştıkça sonuç işle (placebo baz %50; %42 altı ters-seçim uyarısı).",
-    "ForInvest AKD/takas manuel arşiv besleme.",
     "TG_TOKEN/SUPABASE_KEY rotasyonu (kritik değil).",
 ]
 

@@ -23,35 +23,36 @@ Yeni sohbette Claude önce bunu + yol_haritasi.py'yi okur.
 # ══════════════════════════════════════════════════════════════
 # ŞU AN NEREDEYİZ
 # ══════════════════════════════════════════════════════════════
-SURUM = "v15"
-AKTIF_DOSYA = "pages/01_Sanal_Borsa.py (Sanal Borsa v15)"
+SURUM = "v16"
+AKTIF_DOSYA = "akd_sicil.py + akd_manuel_arsiv.csv (AKD Sicil) · app.py Sanal Borsa canlı"
 REPO = "ysfyprk3438-debug/bist-tarama (main)"
-SON_GUNCELLEME = "Altyapı turu: BEKÇİ canlı + veri taze-kapanış yaması + @claude/CI akışı + repo temizliği (PR #14)"
+SON_GUNCELLEME = "AKD Sicil CANLI (akd_sicil.py + AKFGY 6 kayıt, n=1 dürüst yetersiz-örneklem) + Bekçi AKD tazelik alarmı + görsel besleme protokolü + FIZIBILITE_AKD raporu"
 
 SU_AN = {
-    "asama": "Katman 3 (Niyetin İzi — AKD/takas) MANUEL köprü aşamasında; "
-             "altyapı (Bekçi + @claude akışı) canlı",
+    "asama": "Katman 3 (Niyetin İzi — AKD/takas): AKD SİCİL hattı CANLI; "
+             "manuel/görsel besleme + fizibilite kararı bekliyor",
     "son_is": (
-        "Altyapı turu: veri.py taze-kapanış yaması canlıda; Sanal Borsa fiyatları "
-        "2 ondalık Türk formatında; Claude Code + gh laptop'ta kurulu; @claude GitHub "
-        "Actions aktif (issue/PR + otomatik PR incelemesi, CLAUDE_CODE_OAUTH_TOKEN); "
-        "repo temizliği PR #14 merge (42 dosya arsiv/'e); BEKÇİ CANLI (bekci.py + "
-        "bekci.yml, hafta içi 18:45 TR): yeşilse Telegram tek satır, bulguda BEKCI_PAT "
-        "ile bekci etiketli issue açıp @claude'u görevlendirir — merge insanda."
+        "AKD Sicil canlı: akd_manuel_arsiv.csv (AKFGY 6 aylık ilk5 net) + akd_sicil.py "
+        "(3 desen, çapa=dönem bitişi, sonraki 10 işlem günü getirisi, mühürleme tutarlı; "
+        "%40–60 → «≈ yazı-tura», n<5 → yetersiz örneklem). Bugün: n=1 tek olgun instance "
+        "(Mar−→Nis+, gerçek +%2,8) — dürüstçe 'yetersiz örneklem' damgalı. Bekçi'ye AKD "
+        "tazelik alarmı eklendi (arşiv 35+ gün bayatsa SARI). Yarı-otomatik görsel besleme "
+        "protokolü CLAUDE.md §11'de + [AKD] issue şablonu. Tam otomatik için FIZIBILITE_AKD.md "
+        "hazır (karar bekliyor)."
     ),
     "cikan_sonuc": (
-        "Üst-5'te net alım (~+30,9M lot ≈ serbest dolaşımın %1,8'i, ağırlığı Ocak'ta) "
-        "ve belirgin yabancı (BofA custodian) alıcı VAR; fiyat aylık YATAY. "
-        "Bu bir alfa değil, renk. Custodian akışı niyet değil; 'ucuz F/K' 2025-3 "
-        "rayiç kazancına (%328 net marj) yaslı sahte. YÖN ÇIKMIYOR — tez doğrulandı."
+        "AKFGY: Üst-5'te net alım (~+30,9M lot ≈ serbest dolaşımın %1,8'i) ve yabancı "
+        "(BofA custodian) alıcı VAR; fiyat aylık YATAY. Alfa değil, renk. YÖN ÇIKMIYOR — "
+        "tez doğrulandı. Sicil MAKİNESİ artık çalışıyor ama örneklem 1 = anlamsız; "
+        "arşiv büyümeden sicil konuşmaz (dürüst duruş)."
     ),
     "siradaki_adim": (
-        "(1) Bekçi'nin ilk gerçek gece turunu izle. "
-        "(2) AKD desen→sicil etiketleyicisi (AKFGY manuel arşivi ilk kayıt): her manuel "
-        "arşiv desenine ('yabancı 3 ay üst-5 net alıcı' gibi) 1-yıl sicili iliştir; "
-        "%40–60 isabette gri yazı-tura."
+        "(1) MAVI 6 aylık AKD görselleriyle arşivi büyüt — ilk [AKD] issue testi "
+        "(@claude görselden okur → PR → insan doğrular). "
+        "(2) Fizibilite kararı (FIZIBILITE_AKD.md: görsel hat / Matriks API / scraping-hayır). "
+        "(3) AKD sicilinin Sanal Borsa hisse görünümüne entegrasyonu."
     ),
-    "bekleyen_karar": "Yok — sıralı ilerliyoruz.",
+    "bekleyen_karar": "Fizibilite: AKD beslemesi manuel-görsel mi kalsın, ücretli API'ye mi geçilsin (FIZIBILITE_AKD.md).",
 }
 
 # ══════════════════════════════════════════════════════════════
@@ -87,9 +88,11 @@ DEPLOY_ADIMLARI = [
 # AÇIK KALEMLER
 # ══════════════════════════════════════════════════════════════
 ACIK_KALEMLER = [
+    "AKD arşivini büyüt — MAVI 6 aylık AKD görselleriyle ilk [AKD] issue testi (görsel→PR→insan)",
+    "Fizibilite kararı — AKD beslemesi: manuel-görsel mi, ücretli API mi (FIZIBILITE_AKD.md)",
+    "AKD sicilini Sanal Borsa hisse görünümüne entegre et (sonraki UI adımı)",
     "Bekçi CANLI (bekci.py + bekci.yml, hafta içi 18:45 TR) — ilk gerçek gece turunu izle",
-    "AKD desen→sicil etiketleyici (sıradaki iş; AKFGY manuel arşivi ilk kayıt)",
-    "AKD/takas manuel arşiv entegrasyonu (ForInvest, elle) — süregelen açık kalem",
+    "AKD Sicil CANLI (akd_sicil.py + akd_manuel_arsiv.csv) — arşiv büyüdükçe anlam kazanır",
     "İleri-test log birikimi: ileri_gunluk.csv (gunluk.yml, hafta içi 15:30 UTC) — tek gerçek OOS",
     "Makro: makro_guncel.json yarı-manuel (çeyreklik 2 sayı)",
     "Kozmetik: ileri-test grafiği Endeks/Mevduat renkleri ayırt edilemiyor",
