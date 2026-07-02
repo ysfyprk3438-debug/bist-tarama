@@ -47,6 +47,12 @@ TAMAMLANAN = [
     ("Beklenen Değer + PLACEBO — edge = kurulumun piyasa yönünün üstüne kattığı (beta/alpha ayrımı)", "✅"),
     ("AL Sinyali — çoklu süzgeç kesişimi (giriş+sicil+R/R+edge), seçici, her zaman sicil taşır", "✅"),
     ("Oto-simülasyon — kural-tetikli gir/çık, vol-target, yarı nakit, stop/hedef sabit, forward-test paneli", "✅"),
+    ("veri.py taze-kapanış yaması canlı; Sanal Borsa fiyatları 2 ondalık Türk formatı", "✅"),
+    ("@claude GitHub Actions akışı — issue/PR + otomatik PR incelemesi (CLAUDE_CODE_OAUTH_TOKEN)", "✅"),
+    ("Repo temizliği — PR #14 merge, 42 ölü dosya arsiv/'e taşındı", "✅"),
+    ("Bekçi — gece sağlık kontrolü (bekci.py + bekci.yml, hafta içi 18:45 TR): sözdizimi+fiyat "
+     "tazeliği+CSV; yeşilse Telegram tek satır, bulguda BEKCI_PAT ile bekci etiketli issue + "
+     "@claude görevlendirme, merge insanda", "✅"),
 ]
 
 # ══════════════════════════════════════════════════════════════
@@ -89,11 +95,14 @@ KATMANLAR = [
     {
         "no": 3,
         "ad": "Gerçek Mikroyapı — AKD/Takas",
-        "durum": "🔒",
+        "durum": "🔨",
         "ozet": "Fiyat+hacim gölgesinden gerçek emir defteri + aracı kurum dağılımı (AKD) "
                 "+ takas verisine. Toplama/dağıtım burada gölge değil somut iz bırakır. "
-                "Ama yine YÖN TAHMİNİ DEĞİL — sadece risk/kaçınma lensini zenginleştirir.",
+                "Ama yine YÖN TAHMİNİ DEĞİL — sadece risk/kaçınma lensini zenginleştirir. "
+                "MANUEL köprü aşamasında: AKFGY doğrulaması yön VERMEDİ (tez teyit).",
         "nasil": "ForInvest AKD/takas manuel arşivini besle (yinelenen açık kalem). "
+                 "Sıradaki somut adım: AKD desen→sicil etiketleyici — AKFGY manuel arşivi "
+                 "ilk kayıt; her desene 1-yıl sicili iliştir, %40–60 isabette gri yazı-tura. "
                  "stockScreener çalışıyor; settlement/order-book backend şu an kapalı.",
         "onkosul": "🔒 ForInvest AKD/takas verisi (backend down — manuel arşiv).",
     },
@@ -103,6 +112,8 @@ KATMANLAR = [
 # AÇIK KALEMLER (kaybolmasın)
 # ══════════════════════════════════════════════════════════════
 ACIK_KALEMLER = [
+    "Bekçi'nin ilk gerçek gece turunu izle (bekci.yml, hafta içi 18:45 TR).",
+    "AKD desen→sicil etiketleyici (AKFGY manuel arşivi ilk kayıt).",
     "Doğrulanabilir makro oto-kaynak (TCMB coğrafi bloklu, OECD API kırılgan). Bulunursa cron'a ekle.",
     "Karar Günlüğü outcome resolution — kararlar olgunlaştıkça sonuç işle (placebo baz %50; %42 altı ters-seçim uyarısı).",
     "ForInvest AKD/takas manuel arşiv besleme.",
