@@ -113,7 +113,7 @@ def _portfoy_satiri():
     parcalar = [f"en büyük tek pozisyon: {en_buyuk_kod} %{en_buyuk_pct:.0f}"]
     # sektör yoğunlaşması (varsa)
     try:
-        from tarama_core import KOD_SEKTOR
+        from sektor_map import KOD_SEKTOR
         sek = {}
         for k, w in PORTFOY.items():
             s = KOD_SEKTOR.get(k, "Diğer")
