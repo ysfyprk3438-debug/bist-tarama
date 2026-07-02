@@ -51,6 +51,10 @@ KAPANIS_ESIK = _time(18, 15)
 # CSV bayatlik esigi (gun)
 CSV_BAYAT_GUN = 5
 
+# AKD manuel arsiv bayatlik esigi (gun) — son donem bitisi bu kadar eskiyse besleme gerekli
+AKD_ARSIV = "akd_manuel_arsiv.csv"
+AKD_BAYAT_GUN = 35
+
 # Seviyeler
 KIRMIZI = "KIRMIZI"
 SARI = "SARI"
@@ -204,6 +208,48 @@ def kontrol_csv(bulgular):
                              "mesaj": f"`{yol}` parse edilemedi: {type(e).__name__}: {e}"})
 
 
+# ── KONTROL d) AKD ARSIV TAZELIGI ───────────────────────────────────
+def kontrol_akd(bulgular):
+    """
+    akd_manuel_arsiv.csv son kaydinin tarih_bitis'i AKD_BAYAT_GUN'den eskiyse,
+    dosya yoksa veya bossa → SARI 'AKD arsivi bayat — besleme gerekli'.
+    Manuel besleme hatti oldugu icin KIRMIZI degil SARI (kritik degil ama hatirlatir).
+    """
+    try:
+        import pandas as pd
+    except Exception:
+        return  # pandas yoksa kontrol_csv zaten KIRMIZI basar; burada sessiz gec
+
+    yol = AKD_ARSIV
+    if not os.path.exists(yol):
+        bulgular.append({"seviye": SARI, "alan": "akd",
+                         "mesaj": "AKD arsivi bayat — besleme gerekli "
+                                  f"(`{yol}` yok)."})
+        return
+    try:
+        df = pd.read_csv(yol)
+    except Exception:
+        # Bos dosya (sadece baslik / hic satir) pandas'ta EmptyDataError verebilir
+        bulgular.append({"seviye": SARI, "alan": "akd",
+                         "mesaj": f"AKD arsivi bayat — besleme gerekli (`{yol}` bos)."})
+        return
+    if df.empty or "tarih_bitis" not in df.columns:
+        bulgular.append({"seviye": SARI, "alan": "akd",
+                         "mesaj": f"AKD arsivi bayat — besleme gerekli (`{yol}` bos)."})
+        return
+    son = pd.to_datetime(df["tarih_bitis"], errors="coerce").dropna().max()
+    if son is None or pd.isna(son):
+        bulgular.append({"seviye": SARI, "alan": "akd",
+                         "mesaj": f"AKD arsivi bayat — besleme gerekli "
+                                  f"(`{yol}` tarih_bitis okunamadi)."})
+        return
+    yas = (tr_simdi().date() - son.date()).days
+    if yas > AKD_BAYAT_GUN:
+        bulgular.append({"seviye": SARI, "alan": "akd",
+                         "mesaj": f"AKD arsivi bayat — besleme gerekli "
+                                  f"(son donem bitisi {son.date()}, {yas} gun once)."})
+
+
 # ── TELEGRAM ────────────────────────────────────────────────────────
 def telegram_gonder(metin):
     """Telegram'a POST. Env yoksa SESSIZCE atla (stdout'a bas). Cokme yok."""
@@ -318,6 +364,7 @@ def calis():
     kontrol_sozdizimi(bulgular)
     kontrol_fiyat(bulgular)
     kontrol_csv(bulgular)
+    kontrol_akd(bulgular)
 
     tarih = tr_simdi().strftime("%d.%m.%Y")
 
