@@ -17,10 +17,11 @@ FELSEFE (CLAUDE.md): bu SADECE veri girisidir. Yon tahmini / AL-SAT / skor YOK.
 "Gecmiste su kurum su kadar net yapti" — gozlem, kehanet degil.
 """
 
+import csv
 import logging
 import os
 import sys
-from datetime import date
+from datetime import date, datetime
 
 import requests
 
@@ -187,18 +188,42 @@ def _konsol(kod):
 
 
 # ── TOKEN TESHIS (--tokentest) ──────────────────────────────────────
+GUNLUK_CSV = "token_gunluk.csv"          # yerel olcum gunlugu (gitignore'lu, repoya girmez)
+GUNLUK_BASLIK = ["tarih", "saat", "durum", "http_kodu"]
+
+
+def _gunluk_yaz(durum, http_kodu):
+    """
+    token_gunluk.csv'ye tek satir ekler: tarih, saat, durum, http_kodu.
+    Dosya yoksa baslikla olusturur, varsa append eder.
+    TOKEN ASLA YAZILMAZ — yalnizca sonuc. Yazim hatasi olcumu bozmaz (sessiz gec).
+    """
+    try:
+        simdi = datetime.now()
+        yeni = not os.path.exists(GUNLUK_CSV)
+        with open(GUNLUK_CSV, "a", encoding="utf-8", newline="") as f:
+            w = csv.writer(f)
+            if yeni:
+                w.writerow(GUNLUK_BASLIK)
+            w.writerow([simdi.strftime("%Y-%m-%d"), simdi.strftime("%H:%M:%S"),
+                        durum, "" if http_kodu is None else http_kodu])
+    except Exception as e:
+        _log.warning(f"token_gunluk yazilamadi: {type(e).__name__}")
+
+
 def token_testi(kod="GARAN"):
     """
     Sadece token GECERLI mi diye bakar — VERI PARSE ETMEZ.
     HTTP durum kodunu ve GECERLI/GECERSIZ yazar. Token omru olcumu icin:
         python akd_cekici.py --tokentest
+    Ek olarak sonucu token_gunluk.csv'ye tek satir kaydeder (token yazilmaz).
     Doner (exit): 0 gecerli · 1 gecersiz(401/403)/token-yok · 2 belirsiz.
     """
     try:
         token = _token()
     except RuntimeError as e:
         print(f"HATA: {e}")
-        return 1
+        return 1                          # token yok = olcum degil, gunluge yazilmaz
     url = BASE_URL.format(kod=str(kod).upper().strip(), gun=_gun_str(None))
     try:
         r = requests.get(
@@ -208,15 +233,19 @@ def token_testi(kod="GARAN"):
         )
     except requests.exceptions.RequestException as e:
         print(f"HTTP: istek gonderilemedi ({type(e).__name__}) — token durumu BELIRSIZ (ag sorunu?).")
+        _gunluk_yaz("BELIRSIZ", "")
         return 2
     print(f"HTTP durum: {r.status_code}")
     if r.status_code == 200:
         print("token GECERLI")
+        _gunluk_yaz("GECERLI", r.status_code)
         return 0
     if r.status_code in (401, 403):
         print(f"token GECERSIZ ({r.status_code})")
+        _gunluk_yaz("GECERSIZ", r.status_code)
         return 1
     print(f"token durumu BELIRSIZ (HTTP {r.status_code}) — 200 degil, 401/403 da degil.")
+    _gunluk_yaz("BELIRSIZ", r.status_code)
     return 2
 
 

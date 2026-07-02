@@ -16,3 +16,6 @@ venv/
 .env
 __pycache__/
 *.pyc
+
+# AKD token olcum gunlugu — yerel kalir, repoya girmez (token icermez ama olcum kisisel)
+token_gunluk.csv
